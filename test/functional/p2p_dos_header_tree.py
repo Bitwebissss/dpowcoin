@@ -249,7 +249,7 @@ def _run_generator(node, log, datafile_path):
     _progress(f"  JSON written to: {datafile_path}")
     _progress("")
     _progress("  Add to chainparams.cpp CTestNetParams::checkpointData:")
-    _progress(f"     {{{CHECKPOINT_HEIGHT}, uint256{{\"{checkpoint_hash}\"}}}},")
+    _progress(f"     {{{CHECKPOINT_HEIGHT}, uint256S{(\"{checkpoint_hash}\")}}},")
     _progress("")
     _progress("  Then rebuild and run without --mine.")
     _progress("=" * 64)
