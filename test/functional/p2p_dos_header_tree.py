@@ -21,10 +21,6 @@ After mining:
   3. Rebuild and run the test without --mine
 """
 
-# ---------------------------------------------------------------------------
-# Only this constant needs updating if you want more/fewer blocks.
-# Hashes are read directly from the JSON - no manual copying needed.
-# ---------------------------------------------------------------------------
 import json
 import os
 import time as _time
@@ -34,6 +30,7 @@ from test_framework.messages import (
     CBlockHeader,
     SEQUENCE_FINAL,
     uint256_from_compact,
+    calc_pow_hashes,
 )
 from test_framework.p2p import (
     P2PInterface,
@@ -46,6 +43,10 @@ from test_framework.blocktools import (
 )
 from test_framework.util import assert_equal
 
+# ---------------------------------------------------------------------------
+# Only this constant needs updating if you want more/fewer blocks.
+# Hashes are read directly from the JSON - no manual copying needed.
+# ---------------------------------------------------------------------------
 CHECKPOINT_HEIGHT = 580
 # ---------------------------------------------------------------------------
 
@@ -76,9 +77,17 @@ def _header_from_record(rec):
     return hdr
 
 
-def _meets_target(hdr):
-    """Return True if hdr.argon2id satisfies hdr.nBits."""
-    return hdr.argon2id <= uint256_from_compact(hdr.nBits)
+def _meets_target(block):
+    """Return True if block satisfies nBits under dpowcoin dual PoW (yespower + argon2id).
+
+    yespower is checked first; argon2id is only computed when yespower passes,
+    which is the same optimisation used in calc_pow_hashes itself.
+    Caller must reset block.yespower = block.argon2id = None before each call
+    so cached values from a previous nonce are not reused.
+    """
+    target = uint256_from_compact(block.nBits)
+    yp, a2 = calc_pow_hashes(block)
+    return yp <= target and a2 is not None and a2 <= target
 
 
 # ---------------------------------------------------------------------------
@@ -118,23 +127,34 @@ def _run_generator(node, log, datafile_path):
         block.nTime         = tmpl['curtime']
         block.nBits         = int(tmpl['bits'], 16)
 
+        # halving_period omitted: regtest period (150 blocks) is fine for
+        # checkpoint logic testing; we can't physically mine to halving anyway.
         cb = create_coinbase(
             height=height,
             script_pubkey=COINBASE_SCRIPT_PUBKEY,
-            halving_period=420000,
         )
         cb.nLockTime = 0
         cb.vin[0].nSequence = SEQUENCE_FINAL
         block.vtx = [cb]
         block.hashMerkleRoot = block.calc_merkle_root()
 
+        # Mine: yespower is checked first inside calc_pow_hashes;
+        # argon2id is only computed when yespower already passes the target,
+        # so most nonce iterations cost only one fast yespower hash.
+        target = uint256_from_compact(block.nBits)
         found = False
         for nonce in range(0x1_0000_0000):
-            block.nNonce = nonce
-            if _meets_target(block):
+            block.nNonce   = nonce
+            block.yespower = None   # invalidate cached hashes for new nonce
+            block.argon2id = None
+            yp, a2 = calc_pow_hashes(block)
+            if yp <= target and a2 is not None and a2 <= target:
                 found = True
                 break
         assert found, f"Exhausted nonce space at height {height}"
+
+        # Populate block.hash (hex string) for submitblock and JSON record.
+        block.calc_sha256()
 
         block_hex = block.serialize(with_witness=False).hex()
         result = node.submitblock(block_hex)
@@ -149,7 +169,7 @@ def _run_generator(node, log, datafile_path):
         _progress(
             f"  [{height:>3}/{CHECKPOINT_HEIGHT}]  "
             f"nonce={nonce:<8}  bits={block.nBits:#010x}  "
-            f"hash={block.hash_hex[:16]}...  "
+            f"hash={block.hash[:16]}...  "
             f"{elapsed_block:4.1f}s/block  ETA {eta_min}m{eta_sec:02d}s"
         )
 
@@ -161,17 +181,18 @@ def _run_generator(node, log, datafile_path):
             'time':        block.nTime,
             'bits':        block.nBits,
             'nonce':       block.nNonce,
-            'hash':        block.hash_hex,
+            'hash':        block.hash,
         })
 
-        # Write after every block so progress survives a crash
+        # Write after every block so progress survives a crash.
         with open(datafile_path, 'w', encoding='utf-8') as f:
             json.dump({'main': records_main, 'fork': records_fork}, f, indent=2)
             f.write('\n')
 
-    # Mine 2 fork blocks branching from genesis
+    # Mine 2 fork blocks branching from genesis.
     genesis_block_info = node.getblock(genesis_hash)
     fork_nbits = int(genesis_block_info['bits'], 16)
+    fork_target = uint256_from_compact(fork_nbits)
 
     _progress("")
     _progress(f"  Mining 2 fork headers at genesis nBits={fork_nbits:#010x}")
@@ -194,7 +215,6 @@ def _run_generator(node, log, datafile_path):
         cb = create_coinbase(
             height=height,
             script_pubkey=COINBASE_SCRIPT_PUBKEY,
-            halving_period=420000,
         )
         cb.nLockTime = 0
         cb.vin[0].nSequence = SEQUENCE_FINAL
@@ -203,16 +223,21 @@ def _run_generator(node, log, datafile_path):
 
         found = False
         for nonce in range(0x1_0000_0000):
-            block.nNonce = nonce
-            if _meets_target(block):
+            block.nNonce   = nonce
+            block.yespower = None
+            block.argon2id = None
+            yp, a2 = calc_pow_hashes(block)
+            if yp <= fork_target and a2 is not None and a2 <= fork_target:
                 found = True
                 break
         assert found, f"Exhausted nonce space for fork block at height {height}"
 
+        block.calc_sha256()
+
         elapsed_block = _time.monotonic() - t_block
         _progress(
             f"  fork [{height}/2]  nonce={nonce:<8}  "
-            f"hash={block.hash_hex[:16]}...  {elapsed_block:.1f}s"
+            f"hash={block.hash[:16]}...  {elapsed_block:.1f}s"
         )
 
         records_fork.append({
@@ -223,9 +248,9 @@ def _run_generator(node, log, datafile_path):
             'time':        block.nTime,
             'bits':        block.nBits,
             'nonce':       block.nNonce,
-            'hash':        block.hash_hex,
+            'hash':        block.hash,
         })
-        prev_fork_int = block.hash_int
+        prev_fork_int = int(block.hash, 16)
 
         with open(datafile_path, 'w', encoding='utf-8') as f:
             json.dump({'main': records_main, 'fork': records_fork}, f, indent=2)
@@ -290,7 +315,7 @@ class RejectLowDifficultyHeadersTest(BitcoinTestFramework):
         headers      = [_header_from_record(r) for r in data['main']]
         headers_fork = [_header_from_record(r) for r in data['fork']]
 
-        # Hashes come from the JSON - no hardcoded constants to keep in sync
+        # Hashes come from the JSON - no hardcoded constants to keep in sync.
         checkpoint_hash = data['main'][-1]['hash']
         fork_tip_hash   = data['fork'][-1]['hash']
 
@@ -314,7 +339,7 @@ class RejectLowDifficultyHeadersTest(BitcoinTestFramework):
 
         self.log.info("Feed all fork headers (fails due to checkpoint)")
         with self.nodes[0].assert_debug_log(['bad-fork-prior-to-checkpoint']):
-            peer_checkpoint.send_without_ping(msg_headers(headers_fork))
+            peer_checkpoint.send_message(msg_headers(headers_fork))
             peer_checkpoint.wait_for_disconnect()
 
         self.log.info("Feed all fork headers (succeeds without checkpoint)")
