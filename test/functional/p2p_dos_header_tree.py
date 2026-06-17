@@ -340,4 +340,4 @@ class RejectLowDifficultyHeadersTest(BitcoinTestFramework):
 
 
 if __name__ == '__main__':
-    RejectLowDifficultyHeadersTest(__file__).main()
+    RejectLowDifficultyHeadersTest().main()
