@@ -61,10 +61,6 @@ def _progress(msg):
         os.write(2, (msg + '\n').encode())
 
 
-# ---------------------------------------------------------------------------
-# Helpers shared between generator and test
-# ---------------------------------------------------------------------------
-
 def _header_from_record(rec):
     """Reconstruct a CBlockHeader from a JSON record."""
     hdr = CBlockHeader()
@@ -75,19 +71,6 @@ def _header_from_record(rec):
     hdr.nBits          = rec['bits']
     hdr.nNonce         = rec['nonce']
     return hdr
-
-
-def _meets_target(block):
-    """Return True if block satisfies nBits under dpowcoin dual PoW (yespower + argon2id).
-
-    yespower is checked first; argon2id is only computed when yespower passes,
-    which is the same optimisation used in calc_pow_hashes itself.
-    Caller must reset block.yespower = block.argon2id = None before each call
-    so cached values from a previous nonce are not reused.
-    """
-    target = uint256_from_compact(block.nBits)
-    yp, a2 = calc_pow_hashes(block)
-    return yp <= target and a2 is not None and a2 <= target
 
 
 # ---------------------------------------------------------------------------
