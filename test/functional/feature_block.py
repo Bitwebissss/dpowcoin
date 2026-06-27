@@ -637,9 +637,7 @@ class FullBlockTest(BitcoinTestFramework):
         b47 = self.next_block(47)
         target = uint256_from_compact(b47.nBits)
         while True:
-            yespower, argon2id = calc_pow_hashes(b47)
-            # Looking for a nonce where at least one algorithm fails
-            if yespower > target or argon2id is None or argon2id > target:
+            if calc_pow_hashes(b47) > target:
                 break
             b47.nNonce += 1
             b47.rehash()

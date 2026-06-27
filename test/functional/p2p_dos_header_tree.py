@@ -121,14 +121,10 @@ def _run_generator(node, log, datafile_path):
         block.vtx = [cb]
         block.hashMerkleRoot = block.calc_merkle_root()
 
-        # Mine: yespower is checked first inside calc_pow_hashes;
-        # argon2id is only computed when yespower already passes the target,
-        # so most nonce iterations cost only one fast yespower hash.
         target = uint256_from_compact(block.nBits)
         found = False
         for nonce in range(0x1_0000_0000):
             block.nNonce   = nonce
-            block.yespower = None   # invalidate cached hashes for new nonce
             block.argon2id = None
             yp, a2 = calc_pow_hashes(block)
             if yp <= target and a2 is not None and a2 <= target:
@@ -207,7 +203,6 @@ def _run_generator(node, log, datafile_path):
         found = False
         for nonce in range(0x1_0000_0000):
             block.nNonce   = nonce
-            block.yespower = None
             block.argon2id = None
             yp, a2 = calc_pow_hashes(block)
             if yp <= fork_target and a2 is not None and a2 <= fork_target:
