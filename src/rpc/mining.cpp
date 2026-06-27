@@ -129,25 +129,18 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& 
     block_out.reset();
     block.hashMerkleRoot = BlockMerkleRoot(block);
 
-    // TRANSITIONAL: Yespower filter active only before fork height. Remove in next release.
-    static const int YESPOWER_FORK_HEIGHT = 217000;
+    // TRANSITIONAL: Yespower required only in window [100000, 217000). Remove in next release.
+    static const int YESPOWER_START_HEIGHT = 100000;
+    static const int YESPOWER_FORK_HEIGHT  = 217000;
     const CBlockIndex* tip = chainman.ActiveChain().Tip();
     const int nMiningHeight = tip ? tip->nHeight + 1 : 0;
-    const bool bYespowerRequired = nMiningHeight < YESPOWER_FORK_HEIGHT;
+    const bool bYespowerRequired = nMiningHeight >= YESPOWER_START_HEIGHT && nMiningHeight < YESPOWER_FORK_HEIGHT;
 
     while (max_tries > 0 &&
            block.nNonce < std::numeric_limits<uint32_t>::max() &&
-           !ShutdownRequested())
-    {
-        if (bYespowerRequired &&
-            !CheckProofOfWork(block.GetYespowerPoWHash(), block.nBits, chainman.GetConsensus())) {
-            ++block.nNonce;
-            --max_tries;
-            continue;
-        }
-        if (CheckProofOfWork(block.GetArgon2idPoWHash(), block.nBits, chainman.GetConsensus())) {
-            break;
-        }
+           !(CheckProofOfWork(block.GetArgon2idPoWHash(), block.nBits, chainman.GetConsensus()) &&
+             (!bYespowerRequired || CheckProofOfWork(block.GetYespowerPoWHash(), block.nBits, chainman.GetConsensus()))) &&
+           !ShutdownRequested()) {
         ++block.nNonce;
         --max_tries;
     }

@@ -126,8 +126,7 @@ def _run_generator(node, log, datafile_path):
         for nonce in range(0x1_0000_0000):
             block.nNonce   = nonce
             block.argon2id = None
-            yp, a2 = calc_pow_hashes(block)
-            if yp <= target and a2 is not None and a2 <= target:
+            if calc_pow_hashes(block) <= target:
                 found = True
                 break
         assert found, f"Exhausted nonce space at height {height}"
@@ -204,8 +203,7 @@ def _run_generator(node, log, datafile_path):
         for nonce in range(0x1_0000_0000):
             block.nNonce   = nonce
             block.argon2id = None
-            yp, a2 = calc_pow_hashes(block)
-            if yp <= fork_target and a2 is not None and a2 <= fork_target:
+            if calc_pow_hashes(block) <= fork_target:
                 found = True
                 break
         assert found, f"Exhausted nonce space for fork block at height {height}"

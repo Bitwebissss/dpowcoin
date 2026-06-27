@@ -3891,9 +3891,10 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
     // Check proof of work
     const Consensus::Params& consensusParams = chainman.GetConsensus();
 
-    // TRANSITIONAL: Yespower required only before fork height. Remove in next release.
-    static const int YESPOWER_FORK_HEIGHT = 217000;
-    if (nHeight < YESPOWER_FORK_HEIGHT) {
+    // TRANSITIONAL: Yespower required only in window [100000, 217000). Remove in next release.
+    static const int YESPOWER_START_HEIGHT = 100000;
+    static const int YESPOWER_FORK_HEIGHT  = 217000;
+    if (nHeight >= YESPOWER_START_HEIGHT && nHeight < YESPOWER_FORK_HEIGHT) {
         if (!CheckProofOfWork(block.GetYespowerPoWHash(), block.nBits, consensusParams)) {
             return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "Yespower proof of work failed");
         }
