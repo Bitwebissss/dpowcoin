@@ -313,13 +313,9 @@ CBlock TestChain100Setup::CreateBlock(
         block.vtx.push_back(MakeTransactionRef(tx));
     }
     RegenerateCommitments(block, *Assert(m_node.chainman));
-    // Dual PoW: cheap Yespower first, Argon2id only if Yespower passes
-    while (true) {
-        if (CheckProofOfWork(block.GetYespowerPoWHash(), block.nBits, m_node.chainman->GetConsensus())) {
-            if (CheckProofOfWork(block.GetArgon2idPoWHash(), block.nBits, m_node.chainman->GetConsensus())) break;
-        }
-        ++block.nNonce;
-    }
+
+    while (!CheckProofOfWork(block.GetArgon2idPoWHash(), block.nBits, m_node.chainman->GetConsensus())) ++block.nNonce;
+
     return block;
 }
 

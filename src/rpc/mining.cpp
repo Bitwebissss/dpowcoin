@@ -129,20 +129,24 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& 
     block_out.reset();
     block.hashMerkleRoot = BlockMerkleRoot(block);
 
-    // Dual PoW: cheap Yespower is checked first on every nonce,
-    // expensive Argon2id is only computed when Yespower passes
+    // TRANSITIONAL: Yespower filter active only before fork height. Remove in next release.
+    static const int YESPOWER_FORK_HEIGHT = 217000;
+    const CBlockIndex* tip = chainman.ActiveChain().Tip();
+    const int nMiningHeight = tip ? tip->nHeight + 1 : 0;
+    const bool bYespowerRequired = nMiningHeight < YESPOWER_FORK_HEIGHT;
+
     while (max_tries > 0 &&
            block.nNonce < std::numeric_limits<uint32_t>::max() &&
            !ShutdownRequested())
     {
-        if (!CheckProofOfWork(block.GetYespowerPoWHash(), block.nBits, chainman.GetConsensus())) {
+        if (bYespowerRequired &&
+            !CheckProofOfWork(block.GetYespowerPoWHash(), block.nBits, chainman.GetConsensus())) {
             ++block.nNonce;
             --max_tries;
             continue;
         }
-        // Yespower passed — now check Argon2id
         if (CheckProofOfWork(block.GetArgon2idPoWHash(), block.nBits, chainman.GetConsensus())) {
-            break; // Both PoW checks passed — block found
+            break;
         }
         ++block.nNonce;
         --max_tries;

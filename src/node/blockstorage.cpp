@@ -1025,28 +1025,30 @@ bool BlockManager::WriteUndoDataForBlock(const CBlockUndo& blockundo, BlockValid
 bool BlockManager::ReadBlockFromDisk(CBlock& block, const FlatFilePos& pos) const
 {
     block.SetNull();
+
     // Open history file to read
     CAutoFile filein{OpenBlockFile(pos, true)};
     if (filein.IsNull()) {
         return error("ReadBlockFromDisk: OpenBlockFile failed for %s", pos.ToString());
     }
+
     // Read block
     try {
         filein >> block;
     } catch (const std::exception& e) {
         return error("%s: Deserialize or I/O error - %s at %s", __func__, e.what(), pos.ToString());
     }
-    // Dual PoW: check cheap Yespower first, only verify Argon2id if Yespower passes
-    if (!CheckProofOfWork(block.GetYespowerPoWHash(), block.nBits, GetConsensus())) {
-        return error("ReadBlockFromDisk: Errors in block header Yespower proof of work failed at %s", pos.ToString());
-    }
+
+    // Check the header
     if (!CheckProofOfWork(block.GetArgon2idPoWHash(), block.nBits, GetConsensus())) {
-        return error("ReadBlockFromDisk: Errors in block header Argon2id proof of work failed at %s", pos.ToString());
+        return error("ReadBlockFromDisk: Errors in block header at %s", pos.ToString());
     }
+
     // Signet only: check block solution
     if (GetConsensus().signet_blocks && !CheckSignetBlockSolution(block, GetConsensus())) {
         return error("ReadBlockFromDisk: Errors in block solution at %s", pos.ToString());
     }
+
     return true;
 }
 
