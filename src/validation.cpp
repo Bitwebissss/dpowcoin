@@ -3893,7 +3893,7 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
 
     // TRANSITIONAL: Yespower required only in window [100000, 217000). Remove in next release.
     static const int YESPOWER_START_HEIGHT = 100000;
-    static const int YESPOWER_FORK_HEIGHT  = 217000;
+    static const int YESPOWER_FORK_HEIGHT  = 215360;
     if (nHeight >= YESPOWER_START_HEIGHT && nHeight < YESPOWER_FORK_HEIGHT) {
         if (!CheckProofOfWork(block.GetYespowerPoWHash(), block.nBits, consensusParams)) {
             return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
