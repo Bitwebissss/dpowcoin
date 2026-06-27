@@ -3896,7 +3896,7 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
     static const int YESPOWER_FORK_HEIGHT  = 217000;
     if (nHeight >= YESPOWER_START_HEIGHT && nHeight < YESPOWER_FORK_HEIGHT) {
         if (!CheckProofOfWork(block.GetYespowerPoWHash(), block.nBits, consensusParams)) {
-            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "Yespower proof of work failed");
+            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
         }
     }
 
