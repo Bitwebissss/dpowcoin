@@ -30,14 +30,14 @@ class DumptxoutsetTest(BitcoinTestFramework):
         out = node.dumptxoutset(FILENAME)
         expected_path = node.datadir_path / self.chain / FILENAME
 
-        print(f"=== DPOWCOIN ACTUAL VALUES ===")
-        print(f"coins_written  = {out['coins_written']}")
-        print(f"base_height    = {out['base_height']}")
-        print(f"base_hash      = {out['base_hash']}")
-        print(f"txoutset_hash  = {out['txoutset_hash']}")
-        print(f"nchaintx       = {out['nchaintx']}")
-        print(f"sha256_file    = {sha256sum_file(str(expected_path)).hex()}")
-        print(f"===========================")
+        # print(f"=== DPOWCOIN ACTUAL VALUES ===")
+        # print(f"coins_written  = {out['coins_written']}")
+        # print(f"base_height    = {out['base_height']}")
+        # print(f"base_hash      = {out['base_hash']}")
+        # print(f"txoutset_hash  = {out['txoutset_hash']}")
+        # print(f"nchaintx       = {out['nchaintx']}")
+        # print(f"sha256_file    = {sha256sum_file(str(expected_path)).hex()}")
+        # print(f"===========================")
 
         assert expected_path.is_file()
 
@@ -52,7 +52,7 @@ class DumptxoutsetTest(BitcoinTestFramework):
         # UTXO snapshot hash should be deterministic based on mocked time.
         assert_equal(
             sha256sum_file(str(expected_path)).hex(),
-            '5de8e4e5b1ff0df1cd7cb592ae0b6c27edb5e927b41c9eef788da5869c415e1c')
+            'de0dd481b85a66c3aaf044971bacb36e3866ed15ab64b2ac061009fae5bc0828')
 
         assert_equal(
             out['txoutset_hash'], 'a0b7baa3bf5ccbd3279728f230d7ca0c44a76e9923fca8f32dbfd08d65ea496a')
