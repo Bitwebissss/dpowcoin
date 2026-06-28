@@ -44,7 +44,7 @@ class MaxTipAgeTest(BitcoinTestFramework):
         assert_equal(node_ibd.getblockchaininfo()['initialblockdownload'], False)
 
     def run_test(self):
-        self.log.info("Test IBD with maximum tip age of 24 hours (default).")
+        self.log.info("Test IBD with maximum tip age of 12 hours (default).")
         self.test_maxtipage(DEFAULT_MAX_TIP_AGE, set_parameter=False)
 
         for hours in [10, 6, 3, 1]:
