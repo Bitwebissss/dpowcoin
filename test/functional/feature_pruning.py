@@ -374,7 +374,9 @@ class PruneTest(BitcoinTestFramework):
         assert_equal(block1_details["nTx"], len(block1_details["tx"]))
 
         # mine 6 blocks so we are at height 1001 (i.e., above PruneAfterHeight)
+        set_mocktime_for_large_blocks([node], 6)
         self.generate(node, 6, sync_fun=self.no_op)
+        reset_mocktime([node])
         assert_equal(node.getblockchaininfo()["blocks"], 1001)
 
         # prune parameter in the future (block or timestamp) should raise an exception
@@ -412,7 +414,9 @@ class PruneTest(BitcoinTestFramework):
         assert has_block(2), "blk00002.dat is still there, should be pruned by now"
 
         # advance the tip so blk00002.dat and blk00003.dat can be pruned (the last 288 blocks should now be in blk00004.dat)
+        set_mocktime_for_large_blocks([node], MIN_BLOCKS_TO_KEEP)
         self.generate(node, MIN_BLOCKS_TO_KEEP, sync_fun=self.no_op)
+        reset_mocktime([node])
         prune(1000)
         assert not has_block(2), "blk00002.dat is still there, should be pruned by now"
         assert not has_block(3), "blk00003.dat is still there, should be pruned by now"
@@ -431,9 +435,11 @@ class PruneTest(BitcoinTestFramework):
         # check that wallet loads successfully when restarting a pruned node after IBD.
         # this was reported to fail in #7494.
         self.log.info("Syncing node 5 to test wallet")
+        set_mocktime_for_large_blocks([self.nodes[0], self.nodes[5]], 0)
         self.connect_nodes(0, 5)
         nds = [self.nodes[0], self.nodes[5]]
         self.sync_blocks(nds, wait=5, timeout=300)
+        reset_mocktime([self.nodes[0], self.nodes[5]])
         self.restart_node_mocktime(5, extra_args=["-prune=550", "-blockfilterindex=1"])  # restart to trigger rescan
         self.log.info("Success")
 
