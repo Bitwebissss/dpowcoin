@@ -88,7 +88,7 @@ public:
         consensus.lwmaAveragingWindow = 576;
         // consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
-        consensus.nRuleChangeActivationThreshold = 3628; // ~ 90% of 4032
+        consensus.nRuleChangeActivationThreshold = 3024; // 75%
         consensus.nMinerConfirmationWindow = 4032; //two weeks
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
@@ -336,7 +336,7 @@ public:
         consensus.lwmaAveragingWindow = 576;
         // consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
-        consensus.nRuleChangeActivationThreshold = 3628; // ~90% of 4032
+        consensus.nRuleChangeActivationThreshold = 3024;  // 75%
         consensus.nMinerConfirmationWindow = 4032; // two weeks
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
