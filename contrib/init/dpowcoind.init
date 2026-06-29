@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+#
+#  dpowcoind The dpowcoin core server.
+#
+#
+# chkconfig: 345 80 20
+# description: dpowcoind
+# processname: dpowcoind
+#
+
+# Source function library.
+. /etc/init.d/functions
+
+# you can override defaults in /etc/sysconfig/dpowcoind, see below
+if [ -f /etc/sysconfig/dpowcoind ]; then
+        . /etc/sysconfig/dpowcoind
+fi
+
+RETVAL=0
+
+prog=dpowcoind
+# you can override the lockfile via DPOWCOIND_LOCKFILE in /etc/sysconfig/dpowcoind
+lockfile=${DPOWCOIND_LOCKFILE-/var/lock/subsys/dpowcoind}
+
+# dpowcoind defaults to /usr/bin/dpowcoind, override with DPOWCOIND_BIN
+dpowcoind=${DPOWCOIND_BIN-/usr/bin/dpowcoind}
+
+# dpowcoind opts default to -disablewallet, override with DPOWCOIND_OPTS
+dpowcoind_opts=${DPOWCOIND_OPTS--disablewallet}
+
+start() {
+    echo -n $"Starting $prog: "
+    daemon $DAEMONOPTS $dpowcoind $dpowcoind_opts
+    RETVAL=$?
+    echo
+    [ $RETVAL -eq 0 ] && touch $lockfile
+    return $RETVAL
+}
+
+stop() {
+    echo -n $"Stopping $prog: "
+    killproc $prog -t600
+    RETVAL=$?
+    echo
+    [ $RETVAL -eq 0 ] && rm -f $lockfile
+    return $RETVAL
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    status)
+        status $prog
+        ;;
+    restart)
+        stop
+        start
+        ;;
+    *)
+        echo "Usage: service $prog {start|stop|status|restart}"
+        exit 1
+        ;;
+esac

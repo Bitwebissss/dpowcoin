@@ -98,6 +98,9 @@ static constexpr auto HEADERS_DOWNLOAD_TIMEOUT_BASE = 15min;
 static constexpr auto HEADERS_DOWNLOAD_TIMEOUT_PER_HEADER = 1ms;
 /** How long to wait for a peer to respond to a getheaders request */
 static constexpr auto HEADERS_RESPONSE_TIME{2min};
+/** Minimum timeout extension per PRESYNC/REDOWNLOAD batch; ensures the rolling
+ *  window never shrinks below the initial computed timeout. */
+static constexpr auto HEADERS_PRESYNC_RENEWAL_TIMEOUT{10min};
 /** Protect at least this many outbound peers from disconnection due to slow/
  * behind headers chain.
  */
@@ -145,9 +148,9 @@ static_assert(MAX_BLOCKTXN_DEPTH <= MIN_BLOCKS_TO_KEEP, "MAX_BLOCKTXN_DEPTH too 
  *  want to make this a per-peer adaptive value at some point. */
 static const unsigned int BLOCK_DOWNLOAD_WINDOW = 1024;
 /** Block download timeout base, expressed in multiples of the block interval (i.e. 10 min) */
-static constexpr double BLOCK_DOWNLOAD_TIMEOUT_BASE = 1;
+static constexpr double BLOCK_DOWNLOAD_TIMEOUT_BASE = 2; /* Dpowcoin Params */
 /** Additional block download timeout per parallel downloading peer (i.e. 5 min) */
-static constexpr double BLOCK_DOWNLOAD_TIMEOUT_PER_PEER = 0.5;
+static constexpr double BLOCK_DOWNLOAD_TIMEOUT_PER_PEER = 1; /* Dpowcoin Params */
 /** Maximum number of headers to announce when relaying blocks with headers message.*/
 static const unsigned int MAX_BLOCKS_TO_ANNOUNCE = 8;
 /** Minimum blocks required to signal NODE_NETWORK_LIMITED */
@@ -663,7 +666,7 @@ private:
     arith_uint256 GetAntiDoSWorkThreshold();
     /** Deal with state tracking and headers sync for peers that send
      * non-connecting headers (this can happen due to BIP 130 headers
-     * announcements for blocks interacting with the 2hr (MAX_FUTURE_BLOCK_TIME) rule). */
+     * announcements for blocks interacting with the 10m (MAX_FUTURE_BLOCK_TIME) rule). */
     void HandleUnconnectingHeaders(CNode& pfrom, Peer& peer, const std::vector<CBlockHeader>& headers) EXCLUSIVE_LOCKS_REQUIRED(g_msgproc_mutex);
     /** Return true if the headers connect to each other, false otherwise */
     bool CheckHeadersAreContinuous(const std::vector<CBlockHeader>& headers) const;
@@ -1935,6 +1938,7 @@ void PeerManagerImpl::MaybePunishNodeForBlock(NodeId nodeid, const BlockValidati
             break;
         }
     case BlockValidationResult::BLOCK_INVALID_HEADER:
+    case BlockValidationResult::BLOCK_CHECKPOINT: // Checkpoints restored
     case BlockValidationResult::BLOCK_INVALID_PREV:
         if (peer) Misbehaving(*peer, message);
         return;
@@ -3019,6 +3023,28 @@ void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, Peer& peer,
         // So just check whether we still have headers that we need to process,
         // or not.
         if (headers.empty()) {
+            /* Dpowcoin Params */
+            // [Dpowcoin] Argon2id sliding-window timeout
+            // Dpowcoin uses Argon2id as its PoW algorithm. Unlike SHA-256, Argon2id is
+            // CPU- and memory-intensive, so each batch takes far longer to verify than
+            // on a SHA-256 chain. As the chain grows, PRESYNC spans more and more batches,
+            // and the one-shot timeout set at sync start expires before PRESYNC+REDOWNLOAD
+            // can finish on an honest peer.
+            //
+            // Increasing the global constant is not a fix: any value sufficient for today's
+            // chain will be too small as more blocks are mined.
+            //
+            // Instead, reset the deadline after every received batch. A peer that delivers
+            // batches steadily will never be disconnected, regardless of chain length.
+            // A peer that stops responding for more than HEADERS_PRESYNC_RENEWAL_TIMEOUT
+            // will be disconnected.
+            //
+            // This branch is reached only during IBD (PRESYNC consumed the batch and
+            // returned empty headers). Once sync completes, m_headers_sync_timeout is
+            // set to max() and this mechanism is permanently disabled.
+            if (peer.m_headers_sync_timeout != std::chrono::microseconds::max()) {
+                peer.m_headers_sync_timeout = GetTime<std::chrono::microseconds>() + HEADERS_PRESYNC_RENEWAL_TIMEOUT;
+            }
             return;
         }
 
@@ -3100,6 +3126,18 @@ void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, Peer& peer,
 
     if (processed && received_new_header) {
         LogBlockHeader(*pindexLast, pfrom, /*via_compact_block=*/false);
+    }
+
+    /* Dpowcoin Params */
+    // [Dpowcoin] Argon2id sliding-window timeout — validated-batch renewal.
+    // Headers reaching this point have passed both CheckHeadersPoW and
+    // ProcessNewBlockHeaders, confirming the peer is making genuine progress.
+    // Extend the deadline by HEADERS_PRESYNC_RENEWAL_TIMEOUT so the peer has
+    // time to deliver the next batch. This mirrors the renewal in the PRESYNC
+    // branch above; together they implement the full sliding-window mechanism
+    // for both phases of low-work headers sync and normal IBD.
+    if (peer.m_headers_sync_timeout != std::chrono::microseconds::max()) {
+        peer.m_headers_sync_timeout = GetTime<std::chrono::microseconds>() + HEADERS_PRESYNC_RENEWAL_TIMEOUT;
     }
 
     // Consider fetching more headers if we are not using our headers-sync mechanism.
@@ -5469,8 +5507,19 @@ void PeerManagerImpl::CheckForStaleTipAndEvictPeers()
         // Check whether our tip is stale, and if so, allow using an extra
         // outbound peer
         if (!m_chainman.m_blockman.LoadingBlocks() && m_connman.GetNetworkActive() && m_connman.GetUseAddrmanOutgoing() && TipMayBeStale()) {
+
+            /* Dpowcoin Params */
+            /*
             LogInfo("Potential stale tip detected, will try using extra outbound peer (last tip update: %d seconds ago)\n",
                       count_seconds(now - m_last_tip_update.load()));
+            */
+            // We do not need spam about stale tip at initial sync
+            if (!m_chainman.IsInitialBlockDownload()) {
+                LogInfo("Potential stale tip detected, will try using extra outbound peer (last tip update: %d seconds ago)\n",
+                          count_seconds(now - m_last_tip_update.load()));
+            }
+            /* Dpowcoin Params */
+
             m_connman.SetTryNewOutboundPeer(true);
         } else if (m_connman.GetTryNewOutboundPeer()) {
             m_connman.SetTryNewOutboundPeer(false);
