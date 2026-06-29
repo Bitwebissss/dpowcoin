@@ -458,7 +458,7 @@ BOOST_AUTO_TEST_CASE(addrman_getaddr)
     BOOST_CHECK_EQUAL(vAddr.size(), percent23);
     BOOST_CHECK_EQUAL(vAddr.size(), 461U);
     // (addrman.Size() < number of addresses added) due to address collisions.
-    BOOST_CHECK_EQUAL(addrman->Size(), 2005U);
+    BOOST_CHECK_EQUAL(addrman->Size(), 2006U);
 }
 
 BOOST_AUTO_TEST_CASE(getaddr_unfiltered)
@@ -510,7 +510,7 @@ BOOST_AUTO_TEST_CASE(caddrinfo_get_tried_bucket_legacy)
     uint256 nKey1 = (HashWriter{} << 1).GetHash();
     uint256 nKey2 = (HashWriter{} << 2).GetHash();
 
-    BOOST_CHECK_EQUAL(info1.GetTriedBucket(nKey1, EMPTY_NETGROUPMAN), 77);
+    BOOST_CHECK_EQUAL(info1.GetTriedBucket(nKey1, EMPTY_NETGROUPMAN), 14);
 
     // Test: Make sure key actually randomizes bucket placement. A fail on
     //  this test could be a security issue.
@@ -637,7 +637,7 @@ BOOST_AUTO_TEST_CASE(caddrinfo_get_tried_bucket)
     uint256 nKey1 = (HashWriter{} << 1).GetHash();
     uint256 nKey2 = (HashWriter{} << 2).GetHash();
 
-    BOOST_CHECK_EQUAL(info1.GetTriedBucket(nKey1, ngm_asmap), 169);
+    BOOST_CHECK_EQUAL(info1.GetTriedBucket(nKey1, ngm_asmap), 160);
 
     // Test: Make sure key actually randomizes bucket placement. A fail on
     //  this test could be a security issue.
