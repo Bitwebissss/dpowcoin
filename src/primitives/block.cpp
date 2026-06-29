@@ -13,6 +13,8 @@
 #include <streams.h>
 /* Dpowcoin Params */
 #include <crypto/argon2d/argon2_types.h>
+/* Dpowcoin Params */
+#include <crypto/sha512.h>
 #include <tinyformat.h>
 
 #include <cassert>
@@ -27,61 +29,97 @@ uint256 CBlockHeader::GetHash() const
 
 /* Dpowcoin Params */
 /*
- * Compute the Argon2id proof-of-work hash of this block header.
+ * Compute the two-round Argon2id proof-of-work hash of this block header.
  *
- * The serialized 80-byte block header is used as both the password and
- * the salt input to argon2id_hash_raw. Using the header for both roles
- * keeps the construction simple and self-contained: the salt is fully
- * determined by the header itself, requiring no additional hash or
- * pre-processing step.
+ * Salt derivation
+ * ---------------
+ * The 64-byte salt fed into round 1 is obtained by applying SHA-512 twice
+ * to the serialized header:
+ *   salt = SHA-512( SHA-512( header ) )
  *
- * CDataStream is used to produce the canonical little-endian serialization
- * of the block header. Direct struct casting is avoided as it depends on
- * ABI layout and is not safe across compilers.
+ * Round 1  (consensus-critical parameters, must not be changed)
+ * -------
+ *   password    = serialized 80-byte block header
+ *   salt        = SHA-512²(header)  [64 bytes]
+ *   t_cost      = 2
+ *   m_cost      = 4096 KiB
+ *   lanes/threads = 2
+ *   output      = 32 bytes  → used as salt for round 2
  *
- * Parameters (consensus-critical, must not be changed):
- *   t (time cost)   = 3        -- number of passes over memory
- *   m (memory cost) = 1024 KiB -- fits in CPU L2 cache, penalises GPU
- *   p (parallelism) = 1        -- single-threaded per hash attempt
+ * Round 2  (consensus-critical parameters, must not be changed)
+ * -------
+ *   password    = serialized 80-byte block header  (same as round 1)
+ *   salt        = output of round 1  [32 bytes]
+ *   t_cost      = 2
+ *   m_cost      = 32768 KiB
+ *   lanes/threads = 2
+ *   output      = 32 bytes  → final PoW hash
  */
 uint256 CBlockHeader::GetArgon2idPoWHash() const
 {
-    // Serialize the block header (80 bytes: version, hashPrevBlock,
-    // hashMerkleRoot, nTime, nBits, nNonce).
+    uint256 hash;
+    uint256 hash2;
     DataStream ss{};
     ss << *this;
     assert(ss.size() == 80);
 
+    // Hashing the data using SHA-512 (two rounds)
+    std::vector<unsigned char> salt_sha512(CSHA512::OUTPUT_SIZE);
+    CSHA512 sha512;
+    sha512.Write((unsigned char*)ss.data(), ss.size()).Finalize(salt_sha512.data());
+    sha512.Reset().Write(salt_sha512.data(), salt_sha512.size()).Finalize(salt_sha512.data());
 
-    // Compute Argon2id hash. The serialized header serves as both the
-    // password and the salt. argon2id_hash_raw requires salt >= 8 bytes;
-    // the 80-byte header satisfies this with ample margin.
-    uint256 hash;
-    argon2_context context;
-    context.out    = hash.begin();
-    context.outlen = 32;
-    context.pwd    = const_cast<uint8_t*>((const uint8_t*)ss.data());
-    context.pwdlen = 80;
-    context.salt   = const_cast<uint8_t*>((const uint8_t*)ss.data());
-    context.saltlen = 80;
-    context.secret = nullptr; context.secretlen = 0;
-    context.ad     = nullptr; context.adlen     = 0;
-    context.allocate_cbk = nullptr;
-    context.free_cbk     = nullptr;
-    context.flags   = ARGON2_DEFAULT_FLAGS;
-    context.t_cost  = 3;
-    context.m_cost  = 1024;
-    context.lanes   = 1;
-    context.threads = 1;
-    context.version = ARGON2_VERSION_NUMBER;
+    // Preparing data for hashing
+    uint8_t* const pwd    = const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(ss.data()));
+    const uint32_t pwdlen = static_cast<uint32_t>(ss.size());  // 80
 
-    // argon2id_hash_raw must not fail for well-formed parameters.
-    // Any failure here indicates a programming error or memory exhaustion
-    // and is treated as a fatal condition.
+    // Round 1: t=2, m=4096 KiB, lanes=2; salt = SHA-512²(header).
+    {
+        argon2_context ctx;
+        ctx.out     = hash.begin();
+        ctx.outlen  = 32;
+        ctx.pwd     = pwd;
+        ctx.pwdlen  = pwdlen;
+        ctx.salt    = salt_sha512.data();
+        ctx.saltlen = static_cast<uint32_t>(salt_sha512.size());  // 64
+        ctx.secret  = nullptr; ctx.secretlen = 0;
+        ctx.ad      = nullptr; ctx.adlen     = 0;
+        ctx.allocate_cbk = nullptr;
+        ctx.free_cbk     = nullptr;
+        ctx.flags   = ARGON2_DEFAULT_FLAGS;
+        ctx.t_cost  = 2;
+        ctx.m_cost  = 4096;
+        ctx.lanes   = 2;
+        ctx.threads = 2;
+        ctx.version = ARGON2_VERSION_NUMBER;
+        const int rc = argon2_ctx(&ctx, Argon2_id);
+        assert(rc == ARGON2_OK);
+    }
 
-    const int rc = argon2_ctx(&context, Argon2_id);
-    assert(rc == ARGON2_OK);
-    return hash;
+    // Round 2: t=2, m=32768 KiB, lanes=2; salt = output of round 1.
+    {
+        argon2_context ctx;
+        ctx.out     = hash2.begin();
+        ctx.outlen  = 32;
+        ctx.pwd     = pwd;
+        ctx.pwdlen  = pwdlen;
+        ctx.salt    = hash.begin();
+        ctx.saltlen = 32;
+        ctx.secret  = nullptr; ctx.secretlen = 0;
+        ctx.ad      = nullptr; ctx.adlen     = 0;
+        ctx.allocate_cbk = nullptr;
+        ctx.free_cbk     = nullptr;
+        ctx.flags   = ARGON2_DEFAULT_FLAGS;
+        ctx.t_cost  = 2;
+        ctx.m_cost  = 32768;
+        ctx.lanes   = 2;
+        ctx.threads = 2;
+        ctx.version = ARGON2_VERSION_NUMBER;
+        const int rc = argon2_ctx(&ctx, Argon2_id);
+        assert(rc == ARGON2_OK);
+    }
+
+    return hash2;
 }
 
 std::string CBlock::ToString() const

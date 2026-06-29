@@ -111,7 +111,7 @@ public:
 
         // Deployment of Taproot (BIPs 340-342)
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].bit = 2;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0; // No activation delay
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].threshold = 3024; // 75%
@@ -238,7 +238,7 @@ public:
 
         // Deployment of Taproot (BIPs 340-342)
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].bit = 2;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0; // No activation delay
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].threshold = 3024; // 75%
@@ -371,12 +371,12 @@ public:
         genesis = CreateGenesisBlock(testnet4_genesis_msg,
                 testnet4_genesis_script,
                 1775999890,
-                99880088,
-                0x1f0fffff,
+                12503874,
+                0x1f1fffff,
                 1,
                 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256{"b80f3f587edbe596c082d4f28a2b3590c10723822b6ff100726e37eac83510a3"});
+        assert(consensus.hashGenesisBlock == uint256{"db7ef4db5286066d8ce9566f522a9d3167f490eb2cbdfbb36bbaeca25ab1d702"});
         assert(genesis.hashMerkleRoot == uint256{"45dc81c6f9bd42e76a06fa810a9704e9a0e0415c50850b68d55a0648f6880616"});
 
         vFixedSeeds.clear();
@@ -408,7 +408,7 @@ public:
         // Checkpoints restored
         checkpointData = {
             {
-                {0, uint256{"b80f3f587edbe596c082d4f28a2b3590c10723822b6ff100726e37eac83510a3"}},
+                {0, uint256{"db7ef4db5286066d8ce9566f522a9d3167f490eb2cbdfbb36bbaeca25ab1d702"}},
             }
         };
         // Checkpoints restored

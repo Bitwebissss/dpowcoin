@@ -4,24 +4,29 @@
 
 #include <bench/bench.h>
 #include <crypto/argon2d/argon2.h>
+#include <crypto/sha512.h>
 #include <tinyformat.h>
 #include <uint256.h>
 
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <vector>
 
 /* Consensus-critical parameters - must match block.cpp exactly */
-static constexpr uint32_t ARGON2ID_T       = 3;
-static constexpr uint32_t ARGON2ID_M       = 1024;
-static constexpr uint32_t ARGON2ID_P       = 1;
+static constexpr uint32_t ARGON2ID_T       = 2;
+static constexpr uint32_t ARGON2ID_M1      = 4096;   /* round 1 memory cost (KiB) */
+static constexpr uint32_t ARGON2ID_M2      = 32768;  /* round 2 memory cost (KiB) */
+static constexpr uint32_t ARGON2ID_P       = 2;
 static constexpr size_t   ARGON2ID_HASHLEN = 32;
 static constexpr size_t   HEADER_LEN       = 80;
 
 /*
- * Run one Argon2id PoW hash of a synthetic 80-byte block header.
- * Unit is "hash" - unlike SHA256, Argon2 is memory-hard so
- * throughput in bytes/s is not a meaningful metric.
+ * Run one full two-round Argon2id PoW hash of a synthetic 80-byte block header.
+ * Mirrors GetArgon2idPoWHash() in block.cpp exactly:
+ *   salt  = SHA-512( SHA-512( header ) )
+ *   hash  = Argon2id( pwd=header, salt=salt,  t=2, m=4096,  p=2 )  [round 1]
+ *   hash2 = Argon2id( pwd=header, salt=hash,  t=2, m=32768, p=2 )  [round 2]
  */
 static void RunArgon2idHash(benchmark::Bench& bench)
 {
@@ -29,26 +34,59 @@ static void RunArgon2idHash(benchmark::Bench& bench)
     hdr[0] = 0x04;
 
     bench.unit("hash").batch(1).run([&] {
-        uint256 out;
-        argon2_context context;
-        context.out    = out.begin();
-        context.outlen = ARGON2ID_HASHLEN;
-        context.pwd    = hdr.data();
-        context.pwdlen = HEADER_LEN;
-        context.salt   = hdr.data();
-        context.saltlen = HEADER_LEN;
-        context.secret = nullptr; context.secretlen = 0;
-        context.ad     = nullptr; context.adlen     = 0;
-        context.allocate_cbk = nullptr;
-        context.free_cbk     = nullptr;
-        context.flags   = ARGON2_DEFAULT_FLAGS;
-        context.t_cost  = ARGON2ID_T;
-        context.m_cost  = ARGON2ID_M;
-        context.lanes   = ARGON2ID_P;
-        context.threads = ARGON2ID_P;
-        context.version = ARGON2_VERSION_NUMBER;
-        const int rc = argon2_ctx(&context, Argon2_id);
-        assert(rc == ARGON2_OK);
+        // Derive salt: SHA-512( SHA-512( header ) )
+        std::vector<unsigned char> salt_sha512(CSHA512::OUTPUT_SIZE);
+        CSHA512 sha512;
+        sha512.Write(hdr.data(), hdr.size()).Finalize(salt_sha512.data());
+        sha512.Reset().Write(salt_sha512.data(), salt_sha512.size()).Finalize(salt_sha512.data());
+
+        // Round 1: t=2, m=4096 KiB, p=2; salt = SHA-512²(header)
+        uint256 hash;
+        {
+            argon2_context ctx;
+            ctx.out     = hash.begin();
+            ctx.outlen  = ARGON2ID_HASHLEN;
+            ctx.pwd     = hdr.data();
+            ctx.pwdlen  = HEADER_LEN;
+            ctx.salt    = salt_sha512.data();
+            ctx.saltlen = static_cast<uint32_t>(salt_sha512.size());
+            ctx.secret  = nullptr; ctx.secretlen = 0;
+            ctx.ad      = nullptr; ctx.adlen     = 0;
+            ctx.allocate_cbk = nullptr;
+            ctx.free_cbk     = nullptr;
+            ctx.flags   = ARGON2_DEFAULT_FLAGS;
+            ctx.t_cost  = ARGON2ID_T;
+            ctx.m_cost  = ARGON2ID_M1;
+            ctx.lanes   = ARGON2ID_P;
+            ctx.threads = ARGON2ID_P;
+            ctx.version = ARGON2_VERSION_NUMBER;
+            const int rc = argon2_ctx(&ctx, Argon2_id);
+            assert(rc == ARGON2_OK);
+        }
+
+        // Round 2: t=2, m=32768 KiB, p=2; salt = output of round 1
+        uint256 hash2;
+        {
+            argon2_context ctx;
+            ctx.out     = hash2.begin();
+            ctx.outlen  = ARGON2ID_HASHLEN;
+            ctx.pwd     = hdr.data();
+            ctx.pwdlen  = HEADER_LEN;
+            ctx.salt    = hash.begin();
+            ctx.saltlen = 32;
+            ctx.secret  = nullptr; ctx.secretlen = 0;
+            ctx.ad      = nullptr; ctx.adlen     = 0;
+            ctx.allocate_cbk = nullptr;
+            ctx.free_cbk     = nullptr;
+            ctx.flags   = ARGON2_DEFAULT_FLAGS;
+            ctx.t_cost  = ARGON2ID_T;
+            ctx.m_cost  = ARGON2ID_M2;
+            ctx.lanes   = ARGON2ID_P;
+            ctx.threads = ARGON2ID_P;
+            ctx.version = ARGON2_VERSION_NUMBER;
+            const int rc = argon2_ctx(&ctx, Argon2_id);
+            assert(rc == ARGON2_OK);
+        }
     });
 }
 
