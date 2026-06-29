@@ -27,21 +27,38 @@ import random
 import socket
 import time
 import unittest
-from argon2.low_level import hash_secret_raw, Type
-
 import argon2
 from test_framework.crypto.siphash import siphash256
 from test_framework.util import (
     assert_equal,
     assert_not_equal,
 )
-def GetArgon2idHash(input, salts, cost):
-    hash = argon2.low_level.hash_secret_raw(
-        time_cost=3, memory_cost=cost, parallelism=1,
-        hash_len=32, secret=input, salt=salts,
-        type=argon2.low_level.Type.ID,
+
+def GetArgon2idPoWHash(header_bytes):
+    """Two-round Argon2id PoW hash — mirrors GetArgon2idPoWHash() in block.cpp.
+
+    Round 1:  t=2  m=4096   p=2   salt = SHA-512²(header)  → hash1 (32 bytes)
+    Round 2:  t=2  m=32768  p=2   salt = hash1             → hash2 (32 bytes)
+
+    SHA-512 double-round: sha512(sha512(header)) — same as CSHA512 two-pass in C++.
+    """
+    # Double SHA-512 salt (identical to C++: sha512.Write(...).Finalize → sha512.Reset().Write(...).Finalize)
+    salt_sha512 = hashlib.sha512(hashlib.sha512(header_bytes).digest()).digest()  # 64 bytes
+
+    # Round 1: t=2, m=4096 KiB, p=2
+    hash1 = argon2.low_level.hash_secret_raw(
+        secret=header_bytes, salt=salt_sha512,
+        time_cost=2, memory_cost=4096, parallelism=2,
+        hash_len=32, type=argon2.low_level.Type.ID,
     )
-    return hash
+
+    # Round 2: t=2, m=32768 KiB, p=2  (salt = output of round 1)
+    hash2 = argon2.low_level.hash_secret_raw(
+        secret=header_bytes, salt=hash1,
+        time_cost=2, memory_cost=32768, parallelism=2,
+        hash_len=32, type=argon2.low_level.Type.ID,
+    )
+    return hash2
 
 MAX_LOCATOR_SZ = 101
 MAX_BLOCK_WEIGHT = 4000000
@@ -793,25 +810,16 @@ class CBlockHeader:
 
     @property
     def argon2id(self):
-        """Argon2id PoW hash computed on-the-fly from the serialized 80-byte header.
-        Header bytes serve as BOTH password AND salt - mirrors GetArgon2idPoWHash() in block.cpp.
-        Parameters are consensus-critical (must not be changed):
-          t (time_cost)   = 3
-          m (memory_cost) = 1024 KiB  (ARGON2ID_MEM_COST_KB)
-          p (parallelism) = 1
-          hash_len        = 32 bytes
+        """Two-round Argon2id PoW hash — mirrors GetArgon2idPoWHash() in block.cpp.
+
+        Salt chain (consensus-critical, must not be changed):
+          salt_sha512 = SHA-512(SHA-512(header))       — 64 bytes
+          hash1       = Argon2id(pwd=header, salt=salt_sha512, t=2, m=4096,   p=2)
+          hash2       = Argon2id(pwd=header, salt=hash1,       t=2, m=32768,  p=2)
+        Returns hash2 as uint256 (little-endian integer, same as C++ UintToArith256).
         """
         header_bytes = self._serialize_header()
-        digest = hash_secret_raw(
-            secret=header_bytes,
-            salt=header_bytes,  # same 80-byte header as salt, identical to C++
-            time_cost=3,
-            memory_cost=1024,   # KiB, matches ARGON2ID_MEM_COST_KB = 1024
-            parallelism=1,
-            hash_len=32,
-            type=Type.ID,
-        )
-        return uint256_from_str(digest)
+        return uint256_from_str(GetArgon2idPoWHash(header_bytes))
 
     def __repr__(self):
         return "CBlockHeader(nVersion=%i hashPrevBlock=%064x hashMerkleRoot=%064x nTime=%s nBits=%08x nNonce=%08x)" \
