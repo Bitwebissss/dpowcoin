@@ -3939,11 +3939,18 @@ private:
 public:
     HeaderPoWCache()
     {
-        // Sized generously for several in-flight headers batches (max 2000
-        // headers per P2P message) plus normal block-relay traffic; at
-        // ~constant bytes/entry this is a few hundred KiB, negligible next
-        // to the signature cache.
-        m_cache.setup_bytes(1 << 22); // 4 MiB
+        // [Dpowcoin] Sized for ~2.1M headers (2,097,152 = 2^21 entries,
+        // exactly 64 MiB at sizeof(uint256)=32 bytes/entry). At a 5-minute
+        // block spacing this covers roughly 20 years of chain height before
+        // a fresh-IBD node's header-validation cache writes would start
+        // getting evicted ahead of the corresponding block-body downloads
+        // catching up (see step-3/CheckBlock discussion in commit message).
+        // Current chain height is ~220k, so this is a deliberately generous,
+        // hardcoded constant rather than a config option for now -- revisit
+        // as a -args-tunable parameter (mirroring SignatureCache's
+        // -maxsigcachesize pattern) if/when that becomes worth the
+        // complexity. 64 MiB is negligible next to typical -dbcache budgets.
+        m_cache.setup_bytes(1 << 26); // 64 MiB == 2,097,152 entries
     }
 
     bool Get(const uint256& hash) const
