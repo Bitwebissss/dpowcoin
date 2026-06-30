@@ -4125,7 +4125,7 @@ public:
 //! memory-hard, so gains past a handful of threads are eaten by memory
 //! bandwidth contention, and this queue competes for CPU with
 //! m_script_check_queue and the rest of the node.
-constexpr unsigned int MAX_HEADER_POW_CHECK_THREADS{4};
+constexpr unsigned int MAX_HEADER_POW_CHECK_THREADS{16};
 
 //! Below this many headers, queue dispatch overhead isn't worth it.
 constexpr size_t HEADER_POW_PARALLEL_THRESHOLD{8};
