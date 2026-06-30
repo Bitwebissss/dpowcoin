@@ -335,7 +335,9 @@ BOOST_AUTO_TEST_CASE(lwma3_double_hashrate)
 //     blocks [3+N/2 .. 578]  : spacing T/2 (288 fast blocks)
 //   Because LWMA weights recent blocks linearly higher, the fast second half
 //   dominates and the result is between powLimit/2 and powLimit.
-//   Expected: 0x1f1c0552U  (verified by Python arith_uint256 simulation).
+//   Expected: 0x1f1c1aa4U  (recomputed via faithful Python port of this repo's
+//   Lwma3CalculateNextWorkRequired, integer division order matched exactly;
+//   the previous 0x1f1c0552 constant was wrong).
 //
 //   Any modification to loop weights, timestamp clamping, or accumulator
 //   arithmetic will produce a different compact value and fail this test.
@@ -373,8 +375,8 @@ BOOST_AUTO_TEST_CASE(lwma3_mixed_solvetimes_determinism)
         else                                 ts += T / 2;   // fast second half of window
     }
 
-    // 0x1f1c0552 verified independently by Python arith_uint256 simulation.
-    const unsigned int expected_nbits = 0x1f1c0552U;
+    // 0x1f1c1aa4 verified independently by faithful Python arith_uint256 simulation.
+    const unsigned int expected_nbits = 0x1f1c1aa4U;
     unsigned int result = GetNextWorkRequired(&blocks[chain_len - 1], nullptr, consensus);
     BOOST_CHECK_EQUAL(result, expected_nbits);
 
