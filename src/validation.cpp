@@ -73,6 +73,7 @@
 #include <ranges>
 #include <span>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <utility>
 
@@ -4091,10 +4092,71 @@ void ChainstateManager::GenerateCoinbaseCommitment(CBlock& block, const CBlockIn
 }
 
 /* Dpowcoin Params */
+namespace {
+/**
+ * Argon2id proof-of-work check for a single header, run through
+ * CCheckQueue so a batch of headers can be verified across several worker
+ * threads at once. Each header's PoW is independent of every other header
+ * in the batch -- only the hash computation itself is parallelized here;
+ * link continuity and chainwork accounting still happen afterwards,
+ * sequentially, in the original order, exactly as before.
+ */
+class CHeaderPoWCheck
+{
+private:
+    const CBlockHeader* m_header;
+    const Consensus::Params* m_params;
+
+public:
+    CHeaderPoWCheck(const CBlockHeader& header, const Consensus::Params& params)
+        : m_header(&header), m_params(&params) {}
+
+    std::optional<bool> operator()() const
+    {
+        if (!CheckProofOfWork(m_header->GetArgon2idPoWHash(), m_header->nBits, *m_params)) {
+            return false; // value is unused; presence alone signals failure
+        }
+        return std::nullopt;
+    }
+};
+
+//! Worker threads dedicated to verifying header PoW in parallel. Kept
+//! small and independent of hardware_concurrency(): Argon2id is
+//! memory-hard, so gains past a handful of threads are eaten by memory
+//! bandwidth contention, and this queue competes for CPU with
+//! m_script_check_queue and the rest of the node.
+constexpr unsigned int MAX_HEADER_POW_CHECK_THREADS{4};
+
+//! Below this many headers, queue dispatch overhead isn't worth it.
+constexpr size_t HEADER_POW_PARALLEL_THRESHOLD{8};
+
+CCheckQueue<CHeaderPoWCheck>& GetHeaderPoWCheckQueue()
+{
+    // Constructed once, lazily, on first use, and lives for the rest of
+    // the process. Initialization of function-local statics is
+    // thread-safe since C++11, so no extra locking is needed here.
+    static CCheckQueue<CHeaderPoWCheck> queue{
+        /*batch_size=*/64,
+        std::clamp<unsigned int>(std::thread::hardware_concurrency(), 1, MAX_HEADER_POW_CHECK_THREADS)};
+    return queue;
+}
+} // namespace
+
 bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams)
 {
-    return std::ranges::all_of(headers,
-                               [&](const auto& header) { return CheckProofOfWork(header.GetArgon2idPoWHash(), header.nBits, consensusParams); });
+    if (headers.size() < HEADER_POW_PARALLEL_THRESHOLD) {
+        return std::ranges::all_of(headers,
+                                   [&](const auto& header) { return CheckProofOfWork(header.GetArgon2idPoWHash(), header.nBits, consensusParams); });
+    }
+
+    CCheckQueueControl<CHeaderPoWCheck> control(GetHeaderPoWCheckQueue());
+    std::vector<CHeaderPoWCheck> checks;
+    checks.reserve(headers.size());
+    for (const auto& header : headers) {
+        checks.emplace_back(header, consensusParams);
+    }
+    control.Add(std::move(checks));
+    return !control.Complete().has_value();
 }
 /* Dpowcoin Params */
 
