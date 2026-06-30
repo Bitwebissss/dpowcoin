@@ -71,6 +71,7 @@
 #include <numeric>
 #include <optional>
 #include <ranges>
+#include <shared_mutex>
 #include <span>
 #include <string>
 #include <thread>
@@ -3896,12 +3897,92 @@ void ChainstateManager::ReceivedBlockTransactions(const CBlock& block, CBlockInd
     }
 }
 
+namespace {
+/**
+ * [Dpowcoin] Header PoW result cache.
+ *
+ * Argon2id is memory-hard, so unlike upstream's near-free SHA256d PoW check,
+ * recomputing it is expensive. A header's PoW is currently recomputed up to
+ * three times for the same data: once in the parallel batch check
+ * (HasValidProofOfWork/CHeaderPoWCheck, anti-DoS, on receipt of a headers
+ * message), once sequentially here in CheckBlockHeader() via
+ * AcceptBlockHeader(), and again in CheckBlockHeader() via CheckBlock() once
+ * the block body is downloaded.
+ *
+ * This cache lets CheckBlockHeader() skip the recompute once a header's PoW
+ * has already been verified once, by itself or by the parallel batch check.
+ *
+ * Design notes (why this is safe):
+ * - Positive-only: only ever stores "PoW already verified valid". A failed
+ *   check is never cached, so nothing can be marked valid without having
+ *   actually passed CheckProofOfWork(GetArgon2idPoWHash(), ...) at least once.
+ * - Keyed on GetHash() (cheap SHA256d), not on the Argon2id result itself, so
+ *   computing the cache key never requires the expensive hash.
+ * - A cache miss (cold cache, eviction, or process restart) always falls back
+ *   to a full, honest recomputation -- behavior on miss is identical to
+ *   having no cache at all, so this can only remove redundant work, never
+ *   weaken validation.
+ * - No salting (unlike SignatureCache): an entry can only be inserted after
+ *   its header's PoW was independently verified, which already costs as much
+ *   work as mining would; there is no cheap way for a peer to flood the
+ *   cache with chosen keys the way they could with cheaply-produced
+ *   signatures, so the eviction-poisoning concern SignatureCache's salt
+ *   defends against doesn't apply here.
+ */
+class HeaderPoWCache
+{
+private:
+    typedef CuckooCache::cache<uint256, SignatureCacheHasher> map_type;
+    mutable map_type m_cache;
+    mutable std::shared_mutex m_mutex;
+
+public:
+    HeaderPoWCache()
+    {
+        // Sized generously for several in-flight headers batches (max 2000
+        // headers per P2P message) plus normal block-relay traffic; at
+        // ~constant bytes/entry this is a few hundred KiB, negligible next
+        // to the signature cache.
+        m_cache.setup_bytes(1 << 22); // 4 MiB
+    }
+
+    bool Get(const uint256& hash) const
+    {
+        std::shared_lock<std::shared_mutex> lock(m_mutex);
+        return m_cache.contains(hash, /*erase=*/false);
+    }
+
+    void Set(const uint256& hash)
+    {
+        std::unique_lock<std::shared_mutex> lock(m_mutex);
+        m_cache.insert(hash);
+    }
+};
+
+HeaderPoWCache& GetHeaderPoWCache()
+{
+    static HeaderPoWCache cache;
+    return cache;
+}
+} // namespace
+
 /* Dpowcoin Params */
 static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)
 {
     // Check proof of work matches claimed amount
-    if (fCheckPOW && !CheckProofOfWork(block.GetArgon2idPoWHash(), block.nBits, consensusParams))
-        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
+    if (fCheckPOW) {
+        // [Dpowcoin] Skip the expensive Argon2id recompute if this exact
+        // header already had its PoW verified once (either by the parallel
+        // batch check on headers receipt, or by an earlier call to this
+        // very function). On a cache miss we fall through to the full,
+        // honest check below exactly as before -- this can only remove
+        // redundant work, never skip a real verification.
+        if (!GetHeaderPoWCache().Get(block.GetHash())) {
+            if (!CheckProofOfWork(block.GetArgon2idPoWHash(), block.nBits, consensusParams))
+                return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
+            GetHeaderPoWCache().Set(block.GetHash());
+        }
+    }
 
     return true;
 }
@@ -4100,6 +4181,10 @@ namespace {
  * in the batch -- only the hash computation itself is parallelized here;
  * link continuity and chainwork accounting still happen afterwards,
  * sequentially, in the original order, exactly as before.
+ *
+ * [Dpowcoin] HeaderPoWCache (declared earlier in this file, just above
+ * CheckBlockHeader()) is populated here on success, so the sequential
+ * re-checks in CheckBlockHeader() can skip recomputing Argon2id.
  */
 class CHeaderPoWCheck
 {
@@ -4116,6 +4201,11 @@ public:
         if (!CheckProofOfWork(m_header->GetArgon2idPoWHash(), m_header->nBits, *m_params)) {
             return false; // value is unused; presence alone signals failure
         }
+        // [Dpowcoin] Record that this header's PoW is valid, so the
+        // sequential re-checks in CheckBlockHeader() (both the
+        // AcceptBlockHeader() header-index path and the later CheckBlock()
+        // block-body path) can skip recomputing Argon2id for it.
+        GetHeaderPoWCache().Set(m_header->GetHash());
         return std::nullopt;
     }
 };
@@ -4153,8 +4243,15 @@ CCheckQueue<CHeaderPoWCheck>& GetHeaderPoWCheckQueue()
 bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams)
 {
     if (headers.size() < HEADER_POW_PARALLEL_THRESHOLD) {
-        return std::ranges::all_of(headers,
-                                   [&](const auto& header) { return CheckProofOfWork(header.GetArgon2idPoWHash(), header.nBits, consensusParams); });
+        return std::ranges::all_of(headers, [&](const auto& header) {
+            if (!CheckProofOfWork(header.GetArgon2idPoWHash(), header.nBits, consensusParams)) {
+                return false;
+            }
+            // [Dpowcoin] Same cache population as CHeaderPoWCheck below, for
+            // the small-batch path that bypasses the parallel queue.
+            GetHeaderPoWCache().Set(header.GetHash());
+            return true;
+        });
     }
 
     CCheckQueueControl<CHeaderPoWCheck> control(GetHeaderPoWCheckQueue());
