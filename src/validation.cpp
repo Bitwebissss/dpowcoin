@@ -11,6 +11,7 @@
 #include <chain.h>
 #include <checkqueue.h>
 #include <clientversion.h>
+#include <common/system.h>
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
 #include <consensus/merkle.h>
@@ -73,7 +74,6 @@
 #include <ranges>
 #include <span>
 #include <string>
-#include <thread>
 #include <tuple>
 #include <utility>
 
@@ -4135,9 +4135,17 @@ CCheckQueue<CHeaderPoWCheck>& GetHeaderPoWCheckQueue()
     // Constructed once, lazily, on first use, and lives for the rest of
     // the process. Initialization of function-local statics is
     // thread-safe since C++11, so no extra locking is needed here.
-    static CCheckQueue<CHeaderPoWCheck> queue{
-        /*batch_size=*/64,
-        std::clamp<unsigned int>(std::thread::hardware_concurrency(), 1, MAX_HEADER_POW_CHECK_THREADS)};
+    //
+    // total_participants is how many threads -- including the calling
+    // (master) thread itself, which always helps out via
+    // CCheckQueueControl::Complete(), same convention as -par's
+    // worker_threads_num -- will be hashing concurrently for one batch.
+    // One core is left free for the rest of the node whenever more than
+    // one core is available, so this never starves the system on small
+    // boxes (e.g. a Raspberry Pi).
+    const int cores{GetNumCores()};
+    const int total_participants{std::clamp(cores > 1 ? cores - 1 : cores, 1, static_cast<int>(MAX_HEADER_POW_CHECK_THREADS))};
+    static CCheckQueue<CHeaderPoWCheck> queue{/*batch_size=*/64, total_participants - 1};
     return queue;
 }
 } // namespace
