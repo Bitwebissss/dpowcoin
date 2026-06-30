@@ -669,6 +669,7 @@ void MinerTestingSetup::TestBasicMining(const CScript& scriptPubKey, const std::
         ancestor->nTime += SEQUENCE_LOCK_TIME; // Trick the MedianTimePast
     }
     m_node.chainman->ActiveChain().Tip()->nHeight++;
+    m_node.chainman->ActiveChain().Tip()->BuildSkip(); // resync pskip with the faked height, otherwise GetAncestor() can desync and assert past genesis
     SetMockTime(m_node.chainman->ActiveChain().Tip()->GetMedianTimePast() + 1);
 
     block_template = mining->createNewBlock(options, /*cooldown=*/false);
@@ -889,11 +890,13 @@ BOOST_AUTO_TEST_CASE(CreateNewBlock_validity)
     TestBasicMining(scriptPubKey, txFirst, baseheight);
 
     m_node.chainman->ActiveChain().Tip()->nHeight--;
+    m_node.chainman->ActiveChain().Tip()->BuildSkip(); // resync pskip with the faked height
     SetMockTime(0);
 
     TestPackageSelection(scriptPubKey, txFirst);
 
     m_node.chainman->ActiveChain().Tip()->nHeight--;
+    m_node.chainman->ActiveChain().Tip()->BuildSkip(); // resync pskip with the faked height
     SetMockTime(0);
 
     TestPrioritisedMining(scriptPubKey, txFirst);
