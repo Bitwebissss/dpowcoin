@@ -5333,6 +5333,27 @@ void PeerManagerImpl::ConsiderEviction(CNode& pto, Peer& peer, std::chrono::seco
 
     CNodeState &state = *State(pto.GetId());
 
+    /* Dpowcoin Params */
+    // [Dpowcoin] During low-work headers PRESYNC, pindexBestKnownBlock cannot
+    // advance (no CBlockIndex exists yet for presync'd headers), so the
+    // CHAIN_SYNC_TIMEOUT logic below would fire on a perfectly healthy peer
+    // once Argon2id verification of the full presync window exceeds 20 min.
+    // peer.m_headers_sync_timeout (renewed in ProcessHeadersMessage on every
+    // batch that passes CheckHeadersPoW) is the real liveness signal for this
+    // phase. If it's still pending in the future, the peer is actively
+    // delivering verified batches — treat that the same as "caught up" and
+    // skip the stale-chain check entirely this tick.
+    if (peer.m_headers_sync_timeout != std::chrono::microseconds::max() &&
+        peer.m_headers_sync_timeout > std::chrono::microseconds{0} &&
+        time_in_seconds < std::chrono::duration_cast<std::chrono::seconds>(peer.m_headers_sync_timeout)) {
+        if (state.m_chain_sync.m_timeout != 0s) {
+            state.m_chain_sync.m_timeout = 0s;
+            state.m_chain_sync.m_work_header = nullptr;
+            state.m_chain_sync.m_sent_getheaders = false;
+        }
+        return;
+    }
+
     if (!state.m_chain_sync.m_protect && pto.IsOutboundOrBlockRelayConn() && state.fSyncStarted) {
         // This is an outbound peer subject to disconnection if they don't
         // announce a block with as much work as the current tip within
