@@ -4211,7 +4211,7 @@ public:
         // [Dpowcoin] Record that this header's PoW is valid, so the
         // sequential re-checks in CheckBlockHeader() (both the
         // AcceptBlockHeader() header-index path and the later CheckBlock()
-        // block-body path) can skip recomputing Argon2id for it.
+        // block-body path can skip recomputing Argon2id for it.
         GetHeaderPoWCache().Set(m_header->GetHash());
         return std::nullopt;
     }
