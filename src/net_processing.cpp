@@ -98,9 +98,6 @@ static constexpr auto HEADERS_DOWNLOAD_TIMEOUT_BASE = 15min;
 static constexpr auto HEADERS_DOWNLOAD_TIMEOUT_PER_HEADER = 1ms;
 /** How long to wait for a peer to respond to a getheaders request */
 static constexpr auto HEADERS_RESPONSE_TIME{2min};
-/** Minimum timeout extension per PRESYNC/REDOWNLOAD batch; ensures the rolling
- *  window never shrinks below the initial computed timeout. */
-static constexpr auto HEADERS_PRESYNC_RENEWAL_TIMEOUT{10min};
 /** Protect at least this many outbound peers from disconnection due to slow/
  * behind headers chain.
  */
@@ -414,15 +411,6 @@ struct Peer {
 
     /** When to potentially disconnect peer for stalling headers download */
     std::chrono::microseconds m_headers_sync_timeout GUARDED_BY(NetEventsInterface::g_msgproc_mutex){0us};
-
-    /* Dpowcoin Params */
-    // [Dpowcoin] Deadline for the Argon2id PRESYNC/REDOWNLOAD liveness signal,
-    // separate from m_headers_sync_timeout (which remains a pure stock field
-    // used only for the original headers-download-stall check). This field is
-    // renewed on every batch that passes CheckHeadersPoW/ProcessNewBlockHeaders
-    // during low-work headers sync, and is read only by ConsiderEviction's
-    // PRESYNC bypass. microseconds::max() means "not currently in low-work sync".
-    std::chrono::microseconds m_presync_liveness_timeout GUARDED_BY(NetEventsInterface::g_msgproc_mutex){std::chrono::microseconds::max()};
 
     /** Whether this peer wants invs or headers (when possible) for block announcements */
     bool m_prefers_headers GUARDED_BY(NetEventsInterface::g_msgproc_mutex){false};
@@ -2720,14 +2708,6 @@ bool PeerManagerImpl::IsContinuationOfLowWorkHeadersSync(Peer& peer, CNode& pfro
         if (peer.m_headers_sync->GetState() == HeadersSyncState::State::FINAL) {
             peer.m_headers_sync.reset(nullptr);
 
-            /* Dpowcoin Params */
-            // [Dpowcoin] Low-work headers sync is done for this peer (PRESYNC+
-            // REDOWNLOAD complete). Disarm the PRESYNC liveness bypass in
-            // ConsiderEviction so normal CHAIN_SYNC_TIMEOUT logic applies again,
-            // rather than leaving a stale future deadline lingering for up to
-            // HEADERS_PRESYNC_RENEWAL_TIMEOUT after sync has actually finished.
-            peer.m_presync_liveness_timeout = std::chrono::microseconds::max();
-
             // Delete this peer's entry in m_headers_presync_stats.
             // If this is m_headers_presync_bestpeer, it will be replaced later
             // by the next peer that triggers the else{} branch below.
@@ -2992,11 +2972,6 @@ void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, Peer& peer,
         LOCK(peer.m_headers_sync_mutex);
         if (peer.m_headers_sync) {
             peer.m_headers_sync.reset(nullptr);
-            /* Dpowcoin Params */
-            // [Dpowcoin] Peer abandoned its low-work sync (sent an empty
-            // headers message mid-PRESYNC/REDOWNLOAD). Disarm the liveness
-            // bypass so ConsiderEviction's normal logic governs this peer again.
-            peer.m_presync_liveness_timeout = std::chrono::microseconds::max();
             LOCK(m_headers_presync_mutex);
             m_headers_presync_stats.erase(pfrom.GetId());
         }
@@ -3045,42 +3020,6 @@ void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, Peer& peer,
         // So just check whether we still have headers that we need to process,
         // or not.
         if (headers.empty()) {
-            /* Dpowcoin Params */
-            // [Dpowcoin] Argon2id sliding-window timeout
-            // Dpowcoin uses Argon2id as its PoW algorithm. Unlike SHA-256, Argon2id is
-            // CPU- and memory-intensive, so each batch takes far longer to verify than
-            // on a SHA-256 chain. As the chain grows, PRESYNC spans more and more batches,
-            // and the one-shot timeout set at sync start expires before PRESYNC+REDOWNLOAD
-            // can finish on an honest peer.
-            //
-            // Increasing the global constant is not a fix: any value sufficient for today's
-            // chain will be too small as more blocks are mined.
-            //
-            // Instead, reset the deadline after every received batch. A peer that delivers
-            // batches steadily will never be disconnected, regardless of chain length.
-            // A peer that stops responding for more than HEADERS_PRESYNC_RENEWAL_TIMEOUT
-            // will be disconnected.
-            //
-            // This branch is reached only during IBD (PRESYNC consumed the batch and
-            // returned empty headers). Once low-work sync ends, this field is reset
-            // to max() (see TryLowWorkHeadersSync/HeadersSyncState completion paths)
-            // and the bypass below is permanently disabled for this peer.
-            //
-            // Two independent timeout mechanisms read a "presync liveness" signal:
-            // (1) the stock "Timeout downloading headers" stall check in
-            //     SendMessages, which reads m_headers_sync_timeout directly
-            //     (this is what the renewal here originally existed for, before
-            //     ConsiderEviction grew its own separate bypass);
-            // (2) ConsiderEviction's PRESYNC bypass for CHAIN_SYNC_TIMEOUT, which
-            //     now reads the dedicated m_presync_liveness_timeout instead, so
-            //     it stops accidentally firing for peers that are not in
-            //     low-work sync at all.
-            // Both must be renewed here, or (1) regresses to its pre-patch
-            // 15-minute-ish stall disconnect during long Argon2id presync.
-            if (peer.m_headers_sync_timeout != std::chrono::microseconds::max()) {
-                peer.m_headers_sync_timeout = GetTime<std::chrono::microseconds>() + HEADERS_PRESYNC_RENEWAL_TIMEOUT;
-            }
-            peer.m_presync_liveness_timeout = GetTime<std::chrono::microseconds>() + HEADERS_PRESYNC_RENEWAL_TIMEOUT;
             return;
         }
 
@@ -3162,24 +3101,6 @@ void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, Peer& peer,
 
     if (processed && received_new_header) {
         LogBlockHeader(*pindexLast, pfrom, /*via_compact_block=*/false);
-    }
-
-    /* Dpowcoin Params */
-    // [Dpowcoin] Argon2id sliding-window timeout — validated-batch renewal.
-    // Headers reaching this point have passed both CheckHeadersPoW and
-    // ProcessNewBlockHeaders, confirming the peer is making genuine progress.
-    // Extend both presync-liveness deadlines by HEADERS_PRESYNC_RENEWAL_TIMEOUT
-    // so the peer has time to deliver the next batch. This mirrors the renewal
-    // in the PRESYNC branch above; together they implement the full
-    // sliding-window mechanism for both phases of low-work headers sync, and
-    // for both of the independent timeout mechanisms that depend on it (the
-    // stock SendMessages headers-download-stall check via m_headers_sync_timeout,
-    // and ConsiderEviction's PRESYNC bypass via m_presync_liveness_timeout).
-    if (peer.m_headers_sync_timeout != std::chrono::microseconds::max()) {
-        peer.m_headers_sync_timeout = GetTime<std::chrono::microseconds>() + HEADERS_PRESYNC_RENEWAL_TIMEOUT;
-    }
-    if (peer.m_presync_liveness_timeout != std::chrono::microseconds::max()) {
-        peer.m_presync_liveness_timeout = GetTime<std::chrono::microseconds>() + HEADERS_PRESYNC_RENEWAL_TIMEOUT;
     }
 
     // Consider fetching more headers if we are not using our headers-sync mechanism.
@@ -4274,33 +4195,7 @@ void PeerManagerImpl::ProcessMessage(Peer& peer, CNode& pfrom, const std::string
             // our initial peer is unresponsive (but less bandwidth than we'd
             // use if we turned on sync with all peers).
             CNodeState& state{*Assert(State(pfrom.GetId()))};
-            /* Dpowcoin Params */
-            // [Dpowcoin] Guard against inv-triggered getheaders colliding with an
-            // active low-work headers sync (HeadersSyncState). This getheaders uses
-            // GetLocator(m_chainman.m_best_header), which lags behind the internal
-            // PRESYNC/REDOWNLOAD buffer position (m_best_header only advances once a
-            // batch is fully committed via ProcessNewBlockHeaders). If a response to
-            // this locator arrives while peer.m_headers_sync is active, it gets fed
-            // into IsContinuationOfLowWorkHeadersSync as though it were a
-            // continuation, fails the hashPrevBlock continuity check, and aborts the
-            // entire low-work sync (HeadersSyncState::Finalize()), discarding
-            // buffered progress back to the last committed checkpoint.
-            //
-            // This is a stock-Bitcoin-Core edge case (identical code exists upstream
-            // as of 31.x) that's effectively unreachable there because SHA256 header
-            // verification makes PRESYNC+REDOWNLOAD complete in seconds, far shorter
-            // than the interval between block announcements. Argon2id verification
-            // stretches that window to hours, making the collision near-certain on
-            // every new block. The existing MaybeSendSendHeaders() delay already
-            // applies this same principle to BIP130 announcements; this closes the
-            // matching gap for the inv fallback path.
-            bool has_low_work_sync = false;
-            {
-                LOCK(peer.m_headers_sync_mutex);
-                has_low_work_sync = static_cast<bool>(peer.m_headers_sync);
-            }
-            if (!has_low_work_sync &&
-                (state.fSyncStarted || (!peer.m_inv_triggered_getheaders_before_sync && *best_block != m_last_block_inv_triggering_headers_sync))) {
+            if (state.fSyncStarted || (!peer.m_inv_triggered_getheaders_before_sync && *best_block != m_last_block_inv_triggering_headers_sync)) {
                 if (MaybeSendGetHeaders(pfrom, GetLocator(m_chainman.m_best_header), peer)) {
                     LogDebug(BCLog::NET, "getheaders (%d) %s to peer=%d\n",
                             m_chainman.m_best_header->nHeight, best_block->ToString(),
@@ -4313,8 +4208,6 @@ void PeerManagerImpl::ProcessMessage(Peer& peer, CNode& pfrom, const std::string
                     // than 1 new peer every new block.
                     m_last_block_inv_triggering_headers_sync = *best_block;
                 }
-            } else if (has_low_work_sync) {
-                LogDebug(BCLog::NET, "Deferring inv-triggered getheaders to peer=%d: low-work headers sync in progress\n", pfrom.GetId());
             }
         }
 
@@ -5402,35 +5295,6 @@ void PeerManagerImpl::ConsiderEviction(CNode& pto, Peer& peer, std::chrono::seco
     AssertLockHeld(cs_main);
 
     CNodeState &state = *State(pto.GetId());
-
-    /* Dpowcoin Params */
-    // [Dpowcoin] During low-work headers PRESYNC, pindexBestKnownBlock cannot
-    // advance (no CBlockIndex exists yet for presync'd headers), so the
-    // CHAIN_SYNC_TIMEOUT logic below would fire on a perfectly healthy peer
-    // once Argon2id verification of the full presync window exceeds 20 min.
-    // peer.m_presync_liveness_timeout (renewed in ProcessHeadersMessage on
-    // every batch that passes CheckHeadersPoW, only while a low-work headers
-    // sync is actually in progress for this peer) is the real liveness signal
-    // for this phase. If it's still pending in the future, the peer is
-    // actively delivering verified PRESYNC/REDOWNLOAD batches — treat that the
-    // same as "caught up" and skip the stale-chain check entirely this tick.
-    //
-    // This is a dedicated field, deliberately distinct from
-    // m_headers_sync_timeout. The latter remains untouched stock state used
-    // only by the unrelated headers-download-stall check further below; it
-    // gets set into the future by the ordinary "start syncing" path for any
-    // syncing peer (not just low-work sync) and must not be conflated with
-    // this presync-specific signal, or this bypass ends up suppressing
-    // CHAIN_SYNC_TIMEOUT for peers that are not in low-work sync at all.
-    if (peer.m_presync_liveness_timeout != std::chrono::microseconds::max() &&
-        time_in_seconds < std::chrono::duration_cast<std::chrono::seconds>(peer.m_presync_liveness_timeout)) {
-        if (state.m_chain_sync.m_timeout != 0s) {
-            state.m_chain_sync.m_timeout = 0s;
-            state.m_chain_sync.m_work_header = nullptr;
-            state.m_chain_sync.m_sent_getheaders = false;
-        }
-        return;
-    }
 
     if (!state.m_chain_sync.m_protect && pto.IsOutboundOrBlockRelayConn() && state.fSyncStarted) {
         // This is an outbound peer subject to disconnection if they don't
