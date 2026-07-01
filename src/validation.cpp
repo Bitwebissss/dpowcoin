@@ -4190,8 +4190,12 @@ namespace {
  * sequentially, in the original order, exactly as before.
  *
  * [Dpowcoin] HeaderPoWCache (declared earlier in this file, just above
- * CheckBlockHeader()) is populated here on success, so the sequential
- * re-checks in CheckBlockHeader() can skip recomputing Argon2id.
+ * CheckBlockHeader()) is consulted here first and populated here on
+ * success. This makes the cache bidirectional across header-sync phases:
+ * a header verified during PRESYNC's anti-DoS pass is already cached when
+ * the same header (same hash, same content) is re-sent from scratch for
+ * REDOWNLOAD, so REDOWNLOAD hits the cache instead of recomputing Argon2id.
+ * The sequential re-checks in CheckBlockHeader() also benefit as before.
  */
 class CHeaderPoWCheck
 {
@@ -4205,13 +4209,25 @@ public:
 
     std::optional<bool> operator()() const
     {
+        // [Dpowcoin] If this exact header (by hash) was already verified --
+        // e.g. during PRESYNC, or an earlier REDOWNLOAD attempt of the same
+        // range -- skip the Argon2id recompute entirely. Safe for the same
+        // reason as the CheckBlockHeader() lookup above: the cache is
+        // positive-only and keyed on GetHash(), which already commits to
+        // every field CheckProofOfWork() would examine (including nBits),
+        // so a hit is provably the same check with the same result.
+        if (GetHeaderPoWCache().Get(m_header->GetHash())) {
+            return std::nullopt;
+        }
         if (!CheckProofOfWork(m_header->GetArgon2idPoWHash(), m_header->nBits, *m_params)) {
             return false; // value is unused; presence alone signals failure
         }
         // [Dpowcoin] Record that this header's PoW is valid, so the
         // sequential re-checks in CheckBlockHeader() (both the
         // AcceptBlockHeader() header-index path and the later CheckBlock()
-        // block-body path can skip recomputing Argon2id for it.
+        // block-body path) and any later re-verification of this same batch
+        // of headers (e.g. a REDOWNLOAD re-request of a PRESYNC range) can
+        // skip recomputing Argon2id for it.
         GetHeaderPoWCache().Set(m_header->GetHash());
         return std::nullopt;
     }
@@ -4251,6 +4267,11 @@ bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus:
 {
     if (headers.size() < HEADER_POW_PARALLEL_THRESHOLD) {
         return std::ranges::all_of(headers, [&](const auto& header) {
+            // [Dpowcoin] Same cache lookup as CHeaderPoWCheck above, for the
+            // small-batch path that bypasses the parallel queue.
+            if (GetHeaderPoWCache().Get(header.GetHash())) {
+                return true;
+            }
             if (!CheckProofOfWork(header.GetArgon2idPoWHash(), header.nBits, consensusParams)) {
                 return false;
             }
