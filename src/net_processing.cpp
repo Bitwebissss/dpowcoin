@@ -4274,7 +4274,33 @@ void PeerManagerImpl::ProcessMessage(Peer& peer, CNode& pfrom, const std::string
             // our initial peer is unresponsive (but less bandwidth than we'd
             // use if we turned on sync with all peers).
             CNodeState& state{*Assert(State(pfrom.GetId()))};
-            if (state.fSyncStarted || (!peer.m_inv_triggered_getheaders_before_sync && *best_block != m_last_block_inv_triggering_headers_sync)) {
+            /* Dpowcoin Params */
+            // [Dpowcoin] Guard against inv-triggered getheaders colliding with an
+            // active low-work headers sync (HeadersSyncState). This getheaders uses
+            // GetLocator(m_chainman.m_best_header), which lags behind the internal
+            // PRESYNC/REDOWNLOAD buffer position (m_best_header only advances once a
+            // batch is fully committed via ProcessNewBlockHeaders). If a response to
+            // this locator arrives while peer.m_headers_sync is active, it gets fed
+            // into IsContinuationOfLowWorkHeadersSync as though it were a
+            // continuation, fails the hashPrevBlock continuity check, and aborts the
+            // entire low-work sync (HeadersSyncState::Finalize()), discarding
+            // buffered progress back to the last committed checkpoint.
+            //
+            // This is a stock-Bitcoin-Core edge case (identical code exists upstream
+            // as of 31.x) that's effectively unreachable there because SHA256 header
+            // verification makes PRESYNC+REDOWNLOAD complete in seconds, far shorter
+            // than the interval between block announcements. Argon2id verification
+            // stretches that window to hours, making the collision near-certain on
+            // every new block. The existing MaybeSendSendHeaders() delay already
+            // applies this same principle to BIP130 announcements; this closes the
+            // matching gap for the inv fallback path.
+            bool has_low_work_sync = false;
+            {
+                LOCK(peer.m_headers_sync_mutex);
+                has_low_work_sync = static_cast<bool>(peer.m_headers_sync);
+            }
+            if (!has_low_work_sync &&
+                (state.fSyncStarted || (!peer.m_inv_triggered_getheaders_before_sync && *best_block != m_last_block_inv_triggering_headers_sync))) {
                 if (MaybeSendGetHeaders(pfrom, GetLocator(m_chainman.m_best_header), peer)) {
                     LogDebug(BCLog::NET, "getheaders (%d) %s to peer=%d\n",
                             m_chainman.m_best_header->nHeight, best_block->ToString(),
@@ -4287,6 +4313,8 @@ void PeerManagerImpl::ProcessMessage(Peer& peer, CNode& pfrom, const std::string
                     // than 1 new peer every new block.
                     m_last_block_inv_triggering_headers_sync = *best_block;
                 }
+            } else if (has_low_work_sync) {
+                LogDebug(BCLog::NET, "Deferring inv-triggered getheaders to peer=%d: low-work headers sync in progress\n", pfrom.GetId());
             }
         }
 
