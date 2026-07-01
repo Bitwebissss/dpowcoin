@@ -106,7 +106,7 @@ static constexpr auto HEADERS_PRESYNC_RENEWAL_TIMEOUT{10min};
  */
 static constexpr int32_t MAX_OUTBOUND_PEERS_TO_PROTECT_FROM_DISCONNECT = 4;
 /** Timeout for (unprotected) outbound peers to sync to our chainwork */
-static constexpr auto CHAIN_SYNC_TIMEOUT{20min};
+static constexpr auto CHAIN_SYNC_TIMEOUT{300min};
 /** How frequently to check for stale tips */
 static constexpr auto STALE_CHECK_INTERVAL{10min};
 /** How frequently to check for extra outbound peers and disconnect */
@@ -5332,27 +5332,6 @@ void PeerManagerImpl::ConsiderEviction(CNode& pto, Peer& peer, std::chrono::seco
     AssertLockHeld(cs_main);
 
     CNodeState &state = *State(pto.GetId());
-
-    /* Dpowcoin Params */
-    // [Dpowcoin] During low-work headers PRESYNC, pindexBestKnownBlock cannot
-    // advance (no CBlockIndex exists yet for presync'd headers), so the
-    // CHAIN_SYNC_TIMEOUT logic below would fire on a perfectly healthy peer
-    // once Argon2id verification of the full presync window exceeds 20 min.
-    // peer.m_headers_sync_timeout (renewed in ProcessHeadersMessage on every
-    // batch that passes CheckHeadersPoW) is the real liveness signal for this
-    // phase. If it's still pending in the future, the peer is actively
-    // delivering verified batches — treat that the same as "caught up" and
-    // skip the stale-chain check entirely this tick.
-    if (peer.m_headers_sync_timeout != std::chrono::microseconds::max() &&
-        peer.m_headers_sync_timeout > std::chrono::microseconds{0} &&
-        time_in_seconds < std::chrono::duration_cast<std::chrono::seconds>(peer.m_headers_sync_timeout)) {
-        if (state.m_chain_sync.m_timeout != 0s) {
-            state.m_chain_sync.m_timeout = 0s;
-            state.m_chain_sync.m_work_header = nullptr;
-            state.m_chain_sync.m_sent_getheaders = false;
-        }
-        return;
-    }
 
     if (!state.m_chain_sync.m_protect && pto.IsOutboundOrBlockRelayConn() && state.fSyncStarted) {
         // This is an outbound peer subject to disconnection if they don't
