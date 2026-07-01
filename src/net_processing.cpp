@@ -106,7 +106,7 @@ static constexpr auto HEADERS_PRESYNC_RENEWAL_TIMEOUT{10min};
  */
 static constexpr int32_t MAX_OUTBOUND_PEERS_TO_PROTECT_FROM_DISCONNECT = 4;
 /** Timeout for (unprotected) outbound peers to sync to our chainwork */
-static constexpr auto CHAIN_SYNC_TIMEOUT{300min};
+static constexpr auto CHAIN_SYNC_TIMEOUT{20min};
 /** How frequently to check for stale tips */
 static constexpr auto STALE_CHECK_INTERVAL{10min};
 /** How frequently to check for extra outbound peers and disconnect */
