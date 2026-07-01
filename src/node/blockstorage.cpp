@@ -1083,8 +1083,11 @@ bool BlockManager::ReadBlock(CBlock& block, const FlatFilePos& pos, const std::o
     const auto block_hash{block.GetHash()};
 
      /* Dpowcoin Params */
-    // Check the header
-    if (!CheckProofOfWork(block.GetArgon2idPoWHash(), block.nBits, GetConsensus())) {
+    // Check the header. [Dpowcoin] Cached via CheckProofOfWorkCached() --
+    // this block's PoW was almost certainly already verified once when it
+    // was first accepted (see pow.h), so most getdata/RPC/reindex re-reads
+    // of historical blocks hit the cache instead of recomputing Argon2id.
+    if (!CheckProofOfWorkCached(block, GetConsensus())) {
         LogError("Errors in block header at %s while reading block", pos.ToString());
         return false;
     }

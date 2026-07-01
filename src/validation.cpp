@@ -3897,111 +3897,16 @@ void ChainstateManager::ReceivedBlockTransactions(const CBlock& block, CBlockInd
     }
 }
 
-namespace {
-/**
- * [Dpowcoin] Header PoW result cache.
- *
- * Argon2id is memory-hard, so unlike upstream's near-free SHA256d PoW check,
- * recomputing it is expensive. A header's PoW is currently recomputed up to
- * three times for the same data: once in the parallel batch check
- * (HasValidProofOfWork/CHeaderPoWCheck, anti-DoS, on receipt of a headers
- * message), once sequentially here in CheckBlockHeader() via
- * AcceptBlockHeader(), and again in CheckBlockHeader() via CheckBlock() once
- * the block body is downloaded.
- *
- * This cache lets CheckBlockHeader() skip the recompute once a header's PoW
- * has already been verified once, by itself or by the parallel batch check.
- *
- * Design notes (why this is safe):
- * - Positive-only: only ever stores "PoW already verified valid". A failed
- *   check is never cached, so nothing can be marked valid without having
- *   actually passed CheckProofOfWork(GetArgon2idPoWHash(), ...) at least once.
- * - Keyed on GetHash() (cheap SHA256d), not on the Argon2id result itself, so
- *   computing the cache key never requires the expensive hash.
- * - A cache miss (cold cache, eviction, or process restart) always falls back
- *   to a full, honest recomputation -- behavior on miss is identical to
- *   having no cache at all, so this can only remove redundant work, never
- *   weaken validation.
- * - No salting (unlike SignatureCache): an entry can only be inserted after
- *   its header's PoW was independently verified, which already costs as much
- *   work as mining would; there is no cheap way for a peer to flood the
- *   cache with chosen keys the way they could with cheaply-produced
- *   signatures, so the eviction-poisoning concern SignatureCache's salt
- *   defends against doesn't apply here.
- */
-class HeaderPoWCache
-{
-private:
-    typedef CuckooCache::cache<uint256, SignatureCacheHasher> map_type;
-    mutable map_type m_cache;
-    mutable std::shared_mutex m_mutex;
-
-public:
-    HeaderPoWCache()
-    {
-        // [Dpowcoin] Sized for ~2.1M headers (2,097,152 = 2^21 entries,
-        // exactly 64 MiB at sizeof(uint256)=32 bytes/entry). At a 5-minute
-        // block spacing this covers roughly 20 years of chain height before
-        // a fresh-IBD node's header-validation cache writes would start
-        // getting evicted ahead of the corresponding block-body downloads
-        // catching up (see step-3/CheckBlock discussion in commit message).
-        // Current chain height is ~220k, so this is a deliberately generous,
-        // hardcoded constant rather than a config option for now -- revisit
-        // as a -args-tunable parameter (mirroring SignatureCache's
-        // -maxsigcachesize pattern) if/when that becomes worth the
-        // complexity. 64 MiB is negligible next to typical -dbcache budgets.
-        m_cache.setup_bytes(1 << 26); // 64 MiB == 2,097,152 entries
-    }
-
-    bool Get(const uint256& hash) const
-    {
-        std::shared_lock<std::shared_mutex> lock(m_mutex);
-        return m_cache.contains(hash, /*erase=*/false);
-    }
-
-    void Set(const uint256& hash)
-    {
-        std::unique_lock<std::shared_mutex> lock(m_mutex);
-        m_cache.insert(hash);
-    }
-};
-
-HeaderPoWCache& GetHeaderPoWCache()
-{
-    static HeaderPoWCache cache;
-    return cache;
-}
-
-/**
- * [Dpowcoin] Single choke point for the header-PoW cache's
- * Get -> compute -> Set pattern (see HeaderPoWCache above for the safety
- * argument: positive-only, keyed on GetHash(), miss-safe fallback).
- *
- * All three call sites that need a cached PoW check -- CheckBlockHeader(),
- * CHeaderPoWCheck::operator() (parallel batch), and the small-batch path
- * in HasValidProofOfWork() -- funnel through here instead of each
- * inlining Get/compute/Set by hand, so the pattern can't silently
- * diverge between them.
- *
- * @param[in] header Header to verify; keyed by header.GetHash().
- * @param[in] params Consensus params to check the PoW against.
- * @return true if PoW is valid (cache hit, or freshly verified and now
- *         cached); false if verification failed. A false result is never
- *         cached, so a failed check here is always a full, honest check.
- */
-bool CheckProofOfWorkCached(const CBlockHeader& header, const Consensus::Params& params)
-{
-    const uint256 hash{header.GetHash()};
-    if (GetHeaderPoWCache().Get(hash)) {
-        return true;
-    }
-    if (!CheckProofOfWork(header.GetArgon2idPoWHash(), header.nBits, params)) {
-        return false;
-    }
-    GetHeaderPoWCache().Set(hash);
-    return true;
-}
-} // namespace
+// [Dpowcoin] CheckProofOfWorkCached() -- the HeaderPoWCache-backed choke
+// point used below by CheckBlockHeader(), CHeaderPoWCheck::operator(), and
+// HasValidProofOfWork()'s small-batch path -- now lives in pow.h/pow.cpp
+// (declared next to the plain CheckProofOfWork()), not here. It needs to be
+// a shared primitive: node/blockstorage.cpp's ReadBlock() also calls it on
+// every disk read, and it was previously unreachable from there because it
+// sat in this file's anonymous namespace (internal linkage), not because of
+// any real circular-dependency: blockstorage.cpp already includes both
+// pow.h and validation.h. See pow.cpp for the class and the full safety
+// argument (positive-only, keyed on GetHash(), miss-safe fallback).
 
 /* Dpowcoin Params */
 static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)
