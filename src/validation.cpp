@@ -71,7 +71,6 @@
 #include <numeric>
 #include <optional>
 #include <ranges>
-#include <shared_mutex>
 #include <span>
 #include <string>
 #include <thread>

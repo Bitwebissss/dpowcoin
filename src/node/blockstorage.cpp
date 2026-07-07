@@ -1082,7 +1082,7 @@ bool BlockManager::ReadBlock(CBlock& block, const FlatFilePos& pos, const std::o
 
     const auto block_hash{block.GetHash()};
 
-     /* Dpowcoin Params */
+    /* Dpowcoin Params */
     // Check the header. [Dpowcoin] Cached via CheckProofOfWorkCached() --
     // this block's PoW was almost certainly already verified once when it
     // was first accepted (see pow.h), so most getdata/RPC/reindex re-reads
