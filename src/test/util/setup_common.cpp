@@ -190,12 +190,16 @@ ChainTestingSetup::ChainTestingSetup(const ChainType chainType, const std::vecto
 
     constexpr int script_check_threads = 2;
     StartScriptCheckWorkerThreads(script_check_threads);
+
+    constexpr int header_pow_check_threads = 2;
+    StartHeaderPoWCheckWorkerThreads(header_pow_check_threads);
 }
 
 ChainTestingSetup::~ChainTestingSetup()
 {
     if (m_node.scheduler) m_node.scheduler->stop();
     StopScriptCheckWorkerThreads();
+    StopHeaderPoWCheckWorkerThreads();
     GetMainSignals().FlushBackgroundCallbacks();
     GetMainSignals().UnregisterBackgroundSignalScheduler();
     m_node.connman.reset();
