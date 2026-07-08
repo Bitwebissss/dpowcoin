@@ -273,6 +273,7 @@ void Shutdown(NodeContext& node)
     if (node.scheduler) node.scheduler->stop();
     if (node.chainman && node.chainman->m_thread_load.joinable()) node.chainman->m_thread_load.join();
     StopScriptCheckWorkerThreads();
+    StopHeaderPoWCheckWorkerThreads();
 
     // After the threads that potentially access these pointers have been stopped,
     // destruct and reset all to nullptr.
@@ -1129,6 +1130,24 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     LogPrintf("Script verification uses %d additional threads\n", script_threads);
     if (script_threads >= 1) {
         StartScriptCheckWorkerThreads(script_threads);
+    }
+
+    // Header PoW check threads are sized off cores directly, independent of
+    // -par: that flag governs script_threads above and isn't a proxy for
+    // how many threads should hash Argon2id headers during sync. One core
+    // is left free for the rest of the node whenever more than one core is
+    // available, so a small box (e.g. cores <= 2) runs header PoW checks
+    // sequentially on the calling thread instead of spinning up workers.
+    int header_pow_threads = GetNumCores();
+    header_pow_threads = header_pow_threads > 1 ? header_pow_threads - 1 : header_pow_threads;
+    header_pow_threads = std::min(header_pow_threads, MAX_HEADER_POW_CHECK_THREADS);
+    // Subtract 1 because the calling thread counts towards the total, same
+    // convention as script_threads above.
+    header_pow_threads = std::max(header_pow_threads - 1, 0);
+
+    LogPrintf("Header PoW verification uses %d additional threads\n", header_pow_threads);
+    if (header_pow_threads >= 1) {
+        StartHeaderPoWCheckWorkerThreads(header_pow_threads);
     }
 
     assert(!node.scheduler);

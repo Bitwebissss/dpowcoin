@@ -2072,6 +2072,18 @@ void StopScriptCheckWorkerThreads()
     scriptcheckqueue.StopWorkerThreads();
 }
 
+static CCheckQueue<CHeaderPoWCheck> headerpowcheckqueue(64);
+
+void StartHeaderPoWCheckWorkerThreads(int threads_num)
+{
+    headerpowcheckqueue.StartWorkerThreads(threads_num);
+}
+
+void StopHeaderPoWCheckWorkerThreads()
+{
+    headerpowcheckqueue.StopWorkerThreads();
+}
+
 /**
  * Threshold condition checker that triggers when unknown versionbits are seen on the network.
  */
@@ -3844,20 +3856,39 @@ std::vector<unsigned char> ChainstateManager::GenerateCoinbaseCommitment(CBlock&
 // stage) -- routed through the same CheckProofOfWorkCached() choke point
 // as CheckBlockHeader() above, so a header re-verified here after already
 // passing full validation elsewhere (or vice versa) hits the cache instead
-// of re-running Argon2id. This is the sequential fallback shape bitweb
-// 30.x uses below its CCheckQueue<CHeaderPoWCheck> parallel-dispatch
-// threshold; the queue-based parallel dispatch itself is deferred to the
-// next release (see pow_cache.h's HeaderPoWCache doc comment) since this
-// tree is still on the old, single-return-type CCheckQueue<T>. Behavior on
-// a cache miss is identical to calling CheckProofOfWork() directly, so
-// this cannot weaken presync validation -- it only removes redundant
-// Argon2id recomputation for headers already seen.
-/* Dpowcoin Params */
+// of re-running Argon2id.
+//
+// Below HEADER_POW_PARALLEL_THRESHOLD headers this runs sequentially, on
+// the calling (net processing) thread. At or above it, the batch is
+// dispatched across headerpowcheckqueue's worker threads (see
+// StartHeaderPoWCheckWorkerThreads(), called independently of -par/
+// scriptcheckqueue from init.cpp). The queue is always safe to dispatch
+// to even when zero worker threads were started (e.g. on a 1-2 core box):
+// the calling thread then processes the whole batch itself via the
+// queue's own master-thread path, giving identical results at sequential
+// speed.
+bool CHeaderPoWCheck::operator()()
+{
+    return CheckProofOfWorkCached(*m_header, *m_params);
+}
+
 bool HasValidProofOfWork(const std::vector<CBlockHeader>& headers, const Consensus::Params& consensusParams)
 {
-    return std::all_of(headers.cbegin(), headers.cend(),
-            [&](const auto& header) { return CheckProofOfWorkCached(header, consensusParams);});
+    if (headers.size() < HEADER_POW_PARALLEL_THRESHOLD) {
+        return std::all_of(headers.cbegin(), headers.cend(),
+                [&](const auto& header) { return CheckProofOfWorkCached(header, consensusParams);});
+    }
+
+    CCheckQueueControl<CHeaderPoWCheck> control(&headerpowcheckqueue);
+    std::vector<CHeaderPoWCheck> checks;
+    checks.reserve(headers.size());
+    for (const auto& header : headers) {
+        checks.emplace_back(header, consensusParams);
+    }
+    control.Add(std::move(checks));
+    return control.Wait();
 }
+/* Dpowcoin Params */
 
 bool IsBlockMutated(const CBlock& block, bool check_witness_root)
 {
