@@ -98,7 +98,7 @@ class FullBlockTest(BitcoinTestFramework):
         # Dpowcoin MAX_FUTURE_BLOCK_TIME (FTL) = 600s vs Bitcoin's 7200s.
         # next_block() uses nTime = prev.nTime + 1, so after 600 blocks nTime > node_clock + FTL.
         # We set mocktime at start to cover all ~1300 blocks generated in this test.
-        # MOCK_OFFSET=2000: all blocks (max nTime ≈ start+1300) satisfy nTime ≤ mocktime+FTL=start+2600.
+        # MOCK_OFFSET=2000: all blocks (max nTime start+1300) satisfy nTime mocktime+FTL=start+2600.
         FTL = 600
         MOCK_OFFSET = 2000
         start_time = int(time.time())
@@ -655,7 +655,7 @@ class FullBlockTest(BitcoinTestFramework):
         # FTL=600s in Dpowcoin. Block is rejected if nTime > node_mocktime + FTL.
         # b48.nTime = start_time + MOCK_OFFSET + FTL + 100 = start_time + 2700
         # current mocktime + FTL = start_time + MOCK_OFFSET + FTL = start_time + 2600
-        # => 2700 > 2600 => rejected ✓
+        # => 2700 > 2600 => rejected
         self.log.info("Reject a block with a timestamp >10 Minutes (FTL=600s) in the future")
         self.move_tip(44)
         b48 = self.next_block(48)
@@ -718,21 +718,21 @@ class FullBlockTest(BitcoinTestFramework):
 
         # The block previously rejected (b48.nTime = start_time+2700 > mocktime+FTL=start_time+2600)
         # is now accepted after advancing mocktime to start_time+2200:
-        #   b48.nTime=start_time+2700 <= new_mocktime+FTL=start_time+2800 ✓
-        #   b48p.nTime=start_time+2701 <= start_time+2800 ✓
+        #   b48.nTime=start_time+2700 <= new_mocktime+FTL=start_time+2800
+        #   b48p.nTime=start_time+2701 <= start_time+2800
         #  -> b31 (8) -> b33 (9) -> b35 (10) -> b39 (11) -> b42 (12) -> b43 (13) -> b53 (14) -> b55 (15)
         #                                                                                   \-> b54 (15)
         #                                                                        -> b44 (14)\-> b48 () -> b48p ()
         self.log.info("Accept a previously rejected future block at a later time")
         # Advance mocktime so b48.nTime is within FTL=600s:
         # b48.nTime - FTL + 100 = start_time+2700-600+100 = start_time+2200
-        # => mocktime+FTL = start_time+2800 >= b48p.nTime=start_time+2701 ✓
+        # => mocktime+FTL = start_time+2800 >= b48p.nTime=start_time+2701
         node.setmocktime(b48.nTime - FTL + 100)
         self.move_tip(48)
-        self.block_heights[b48.sha256] = self.block_heights[b44.sha256] + 1  # b48 is a child of b44
+        self.block_heights[b48.sha256] = self.block_heights[b44.sha256] + 1 # b48 is a child of b44
         b48p = self.next_block("48p")
-        self.send_blocks([b48, b48p], success=True)  # Reorg to the longer chain
-        node.invalidateblock(b48p.hash)  # mark b48p as invalid
+        self.send_blocks([b48, b48p], success=True) # Reorg to the longer chain
+        node.invalidateblock(b48p.hash) # mark b48p as invalid
         # Restore mocktime to MOCK_OFFSET (NOT 0 — FTL=600s means real time is unsafe
         # once block nTime values exceed real_now + 600)
         node.setmocktime(start_time + MOCK_OFFSET)
