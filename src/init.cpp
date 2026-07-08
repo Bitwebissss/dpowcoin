@@ -46,6 +46,7 @@
 #include <node/caches.h>
 #include <node/chainstate.h>
 #include <node/chainstatemanager_args.h>
+#include <pow_cache.h> // Dpowcoin Params InitHeaderPoWCache()
 #include <node/context.h>
 #include <node/interface_ui.h>
 #include <node/kernel_notifications.h>
@@ -448,6 +449,9 @@ void SetupServerArgs(ArgsManager& argsman)
     argsman.AddArg("-datadir=<dir>", "Specify data directory", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-dbbatchsize", strprintf("Maximum database write batch size in bytes (default: %u)", nDefaultDbBatchSize), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::OPTIONS);
     argsman.AddArg("-dbcache=<n>", strprintf("Maximum database cache size <n> MiB (%d to %d, default: %d). In addition, unused mempool memory is shared for this cache (see -maxmempool).", nMinDbCache, nMaxDbCache, nDefaultDbCache), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    /* Dpowcoin Params */
+    argsman.AddArg("-headerpowcachesize=<n>", strprintf("Maximum size of the process-lifetime header proof-of-work (Argon2id) verification cache in MiB. Avoids recomputing PoW for a header already verified once in this process, whether re-checked on block acceptance following header acceptance, or on disk re-reads before block relay (default: %u)", DEFAULT_HEADER_POW_CACHE_BYTES >> 20), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    /* Dpowcoin Params */
     argsman.AddArg("-includeconf=<file>", "Specify additional configuration file, relative to the -datadir path (only useable from configuration file, not command line)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-allowignoredconf", strprintf("For backwards compatibility, treat an unused %s file in the datadir as a warning, not an error.", BITCOIN_CONF_FILENAME), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-loadblock=<file>", "Imports blocks from external file on startup", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -1440,6 +1444,15 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
         .notifications = *node.notifications,
     };
     Assert(ApplyArgsManOptions(args, chainman_opts)); // no error can happen, already checked in AppInitParameterInteraction
+
+    /* Dpowcoin Params */
+    // [Dpowcoin] Must run before anything can call GetHeaderPoWCache() --
+    // i.e. before ChainstateManager is constructed below, since that's
+    // what starts headers/block processing. See InitHeaderPoWCache()'s
+    // doc comment in pow_cache.h for why this can't just be done lazily
+    // inside pow_cache.cpp itself (it has no ArgsManager access there).
+    InitHeaderPoWCache(chainman_opts.header_pow_cache_bytes);
+    /* Dpowcoin Params */
 
     BlockManager::Options blockman_opts{
         .chainparams = chainman_opts.chainparams,

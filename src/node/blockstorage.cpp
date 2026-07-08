@@ -15,6 +15,7 @@
 #include <kernel/messagestartchars.h>
 #include <logging.h>
 #include <pow.h>
+#include <pow_cache.h> // Dpowcoin Params
 #include <reverse_iterator.h>
 #include <signet.h>
 #include <streams.h>
@@ -1039,8 +1040,10 @@ bool BlockManager::ReadBlockFromDisk(CBlock& block, const FlatFilePos& pos) cons
         return error("%s: Deserialize or I/O error - %s at %s", __func__, e.what(), pos.ToString());
     }
 
-    // Check the header
-    if (!CheckProofOfWork(block.GetArgon2idPoWHash(), block.nBits, GetConsensus())) {
+    // Check the header. [Dpowcoin] Cached via CheckProofOfWorkCached() --
+    // see pow_cache.h for the full rationale (this is the same choke point
+    // validation.cpp's CheckBlockHeader() uses).
+    if (!CheckProofOfWorkCached(block, GetConsensus())) {
         return error("ReadBlockFromDisk: Errors in block header at %s", pos.ToString());
     }
 

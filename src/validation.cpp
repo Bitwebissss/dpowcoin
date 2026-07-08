@@ -35,6 +35,7 @@
 #include <policy/rbf.h>
 #include <policy/settings.h>
 #include <pow.h>
+#include <pow_cache.h> // Dpowcoin Params
 #include <primitives/block.h>
 #include <primitives/transaction.h>
 #include <random.h>
@@ -3632,10 +3633,21 @@ void ChainstateManager::ReceivedBlockTransactions(const CBlock& block, CBlockInd
     }
 }
 
+/* Dpowcoin Params */
+// [Dpowcoin] CheckProofOfWorkCached() -- the HeaderPoWCache-backed choke
+// point used below by CheckBlockHeader() and node/blockstorage.cpp's
+// ReadBlockFromDisk() -- lives in pow_cache.h/.cpp, a standalone module
+// with no knowledge of CBlockHeader beyond a forward declaration; it
+// depends on pow.h (for the plain CheckProofOfWork()), not the other way
+// around. See pow_cache.h for the full safety argument (positive-only,
+// keyed on GetHash(), miss-safe fallback) and pow_cache.cpp for the
+// HeaderPoWCache class + singleton.
+/* Dpowcoin Params */
 static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)
 {
-    // Check proof of work matches claimed amount
-    if (fCheckPOW && !CheckProofOfWork(block.GetArgon2idPoWHash(), block.nBits, consensusParams))
+    // Check proof of work matches claimed amount.
+    // [Dpowcoin] Cached via CheckProofOfWorkCached() -- see its doc above.
+    if (fCheckPOW && !CheckProofOfWorkCached(block, consensusParams))
         return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
 
     return true;
