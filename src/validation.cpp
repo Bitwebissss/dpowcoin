@@ -3635,13 +3635,13 @@ void ChainstateManager::ReceivedBlockTransactions(const CBlock& block, CBlockInd
 
 /* Dpowcoin Params */
 // [Dpowcoin] CheckProofOfWorkCached() -- the HeaderPoWCache-backed choke
-// point used below by CheckBlockHeader() and node/blockstorage.cpp's
-// ReadBlockFromDisk() -- lives in pow_cache.h/.cpp, a standalone module
-// with no knowledge of CBlockHeader beyond a forward declaration; it
-// depends on pow.h (for the plain CheckProofOfWork()), not the other way
-// around. See pow_cache.h for the full safety argument (positive-only,
-// keyed on GetHash(), miss-safe fallback) and pow_cache.cpp for the
-// HeaderPoWCache class + singleton.
+// point used below by CheckBlockHeader(), HasValidProofOfWork(), and
+// node/blockstorage.cpp's ReadBlockFromDisk() -- lives in pow_cache.h/.cpp,
+// a standalone module with no knowledge of CBlockHeader beyond a forward
+// declaration; it depends on pow.h (for the plain CheckProofOfWork()), not
+// the other way around. See pow_cache.h for the full safety argument
+// (positive-only, keyed on GetHash(), miss-safe fallback) and
+// pow_cache.cpp for the HeaderPoWCache class + singleton.
 /* Dpowcoin Params */
 static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)
 {
@@ -3838,10 +3838,25 @@ std::vector<unsigned char> ChainstateManager::GenerateCoinbaseCommitment(CBlock&
     return commitment;
 }
 
+/* Dpowcoin Params */
+// [Dpowcoin] Headers-presync PoW gate (net_processing.cpp's
+// CheckHeadersPoW(), called during the multi-threaded headers-presync
+// stage) -- routed through the same CheckProofOfWorkCached() choke point
+// as CheckBlockHeader() above, so a header re-verified here after already
+// passing full validation elsewhere (or vice versa) hits the cache instead
+// of re-running Argon2id. This is the sequential fallback shape bitweb
+// 30.x uses below its CCheckQueue<CHeaderPoWCheck> parallel-dispatch
+// threshold; the queue-based parallel dispatch itself is deferred to the
+// next release (see pow_cache.h's HeaderPoWCache doc comment) since this
+// tree is still on the old, single-return-type CCheckQueue<T>. Behavior on
+// a cache miss is identical to calling CheckProofOfWork() directly, so
+// this cannot weaken presync validation -- it only removes redundant
+// Argon2id recomputation for headers already seen.
+/* Dpowcoin Params */
 bool HasValidProofOfWork(const std::vector<CBlockHeader>& headers, const Consensus::Params& consensusParams)
 {
     return std::all_of(headers.cbegin(), headers.cend(),
-            [&](const auto& header) { return CheckProofOfWork(header.GetArgon2idPoWHash(), header.nBits, consensusParams);});
+            [&](const auto& header) { return CheckProofOfWorkCached(header, consensusParams);});
 }
 
 bool IsBlockMutated(const CBlock& block, bool check_witness_root)
