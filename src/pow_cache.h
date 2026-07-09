@@ -48,19 +48,11 @@ static constexpr size_t DEFAULT_HEADER_POW_CACHE_BYTES{64 << 20}; // 64 MiB
  * internals or go through any header/consensus-params machinery -- the
  * cache only knows about uint256 keys, nothing about what they mean.
  *
- * Note: this release only wires the cache into the single-threaded
- * verification call sites (CheckBlockHeader(), ReadBlockFromDisk()).
- * Multi-threaded PoW verification of a headers-sync batch (CHeaderPoWCheck
- * / CCheckQueue<CHeaderPoWCheck>) is intentionally not ported yet -- this
- * dpowcoin tree is still on the old, single-return-type CCheckQueue<T>
- * (see checkqueue.h), unlike the upstream bitweb 30.x tree this was
- * ported from. That part is deferred to the next release, once dpowcoin
- * rebases onto the newer checkqueue.h and drops the legacy yespower PoW
- * path -- at which point the two trees should align closely enough for a
- * clean port. For now, the cache alone still removes all *redundant*
- * Argon2id recomputation (the same header checked more than once), which
- * is the bulk of the win; only first-time verification for a batch stays
- * sequential.
+ * Every caller shares this one cache: CheckBlockHeader()/ReadBlockFromDisk()
+ * (single-threaded call sites), and CHeaderPoWCheck::operator() (called
+ * from headerpowcheckqueue's worker threads during headers presync, see
+ * validation.cpp/checkqueue.h) -- Get()/Set() are safe to call concurrently
+ * from any of them, see the thread-safety argument above.
  *
  * Safety argument (see pow.h's CheckProofOfWorkCached() doc comment for
  * the full picture of how this is used):
@@ -123,8 +115,9 @@ public:
 
 /**
  * Process-lifetime shared instance used by CheckProofOfWorkCached(). Every
- * caller (validation.cpp's CheckBlockHeader(), node/blockstorage.cpp's
- * ReadBlockFromDisk(), and any future caller) shares this one cache.
+ * caller (validation.cpp's CheckBlockHeader()/CHeaderPoWCheck,
+ * node/blockstorage.cpp's ReadBlockFromDisk(), and any future caller)
+ * shares this one cache.
  * Starts out at DEFAULT_HEADER_POW_CACHE_BYTES and can be resized at any
  * time via InitHeaderPoWCache() -- see that function below.
  *
