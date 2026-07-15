@@ -37,6 +37,7 @@
 #include <policy/settings.h>
 #include <policy/truc_policy.h>
 #include <pow.h>
+#include <pow_cache.h> // Dpowcoin Params
 #include <primitives/block.h>
 #include <primitives/transaction.h>
 #include <random.h>
@@ -73,7 +74,7 @@
 #include <ranges>
 #include <span>
 #include <string>
-#include <thread>
+#include <thread> // Dpowcoin Params
 #include <tuple>
 #include <utility>
 
@@ -1269,7 +1270,16 @@ bool MemPoolAccept::SubmitPackage(const ATMPArgs& args, std::vector<Workspace>& 
             package_state.Invalid(PackageValidationResult::PCKG_MEMPOOL_ERROR,
                                   strprintf("BUG! PolicyScriptChecks succeeded but ConsensusScriptChecks failed: %s",
                                             ws.m_ptx->GetHash().ToString()));
-            // Remove the transaction from the mempool.
+        }
+        // BACKPORT (upstream bitcoin/bitcoin commit ac9aa71b7f; not yet in 31.x as of
+        // 2026-07-04): DO NOT DROP ON NEXT UPSTREAM MERGE/REBASE.
+        // Remove first failing tx and all subsequent in package. Previously only the tx that
+        // itself failed ConsensusScriptChecks was removed, leaving any later-in-package
+        // transactions (which may implicitly depend on the failed one) in the mempool -
+        // a potential mempool-consistency invariant violation. This is defensive
+        // (belt-and-suspenders): the guarded condition is not known to be reachable in
+        // production and has no dedicated unit/functional test upstream, only code review.
+        if (!all_submitted) {
             if (!m_subpackage.m_changeset) m_subpackage.m_changeset = m_pool.GetChangeSet();
             m_subpackage.m_changeset->StageRemoval(m_pool.GetIter(ws.m_ptx->GetHash()).value());
         }
@@ -2204,7 +2214,7 @@ DisconnectResult Chainstate::DisconnectBlock(const CBlock& block, const CBlockIn
     // unwinds the blocks in reverse. As a result, the inconsistency is not discovered until the earlier
     // blocks with the duplicate coinbase transactions are disconnected.
     // Dpowcoin Params
-    // remove BIP30 exepctions - we dont have that blocks sow we skip bip30 tx's
+    // remove BIP30 exceptions - we don't have those blocks so we skip BIP30 tx's
     /*
     bool fEnforceBIP30 = !((pindex->nHeight==91722 && pindex->GetBlockHash() == uint256{"00000000000271a2dc26e7667f8419f2e15416dc6955e5a6c6cdf3f2574dd08e"}) ||
                            (pindex->nHeight==91812 && pindex->GetBlockHash() == uint256{"00000000000af0aed4792b1acee3d966af36cf5def14935db8de83d6f9306f2f"}));
@@ -2215,7 +2225,7 @@ DisconnectResult Chainstate::DisconnectBlock(const CBlock& block, const CBlockIn
         Txid hash = tx.GetHash();
         bool is_coinbase = tx.IsCoinBase();
         // Dpowcoin Params
-        // remove BIP30 exepctions - we dont have that blocks sow we skip bip30 tx's
+        // remove BIP30 exceptions - we don't have those blocks so we skip BIP30 tx's
         /*
         bool is_bip30_exception = (is_coinbase && !fEnforceBIP30);
         */
@@ -2229,7 +2239,7 @@ DisconnectResult Chainstate::DisconnectBlock(const CBlock& block, const CBlockIn
                 bool is_spent = view.SpendCoin(out, &coin);
                 if (!is_spent || tx.vout[o] != coin.out || pindex->nHeight != coin.nHeight || is_coinbase != coin.fCoinBase) {
                     // Dpowcoin Params
-                    // remove BIP30 exepctions - we dont have that blocks sow we skip bip30 tx'
+                    // remove BIP30 exceptions - we don't have those blocks so we skip BIP30 tx's
                     /*
                     if (!is_bip30_exception) {
                         fClean = false; // transaction output mismatch
@@ -2417,7 +2427,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     // two in the chain that violate it. This prevents exploiting the issue against nodes during their
     // initial block download.
     // Dpowcoin Params
-    // remove BIP30 exepctions - we dont have that blocks sow we skip bip30 tx's
+    // remove BIP30 exceptions - we don't have those blocks so we skip BIP30 tx's
     //bool fEnforceBIP30 = !IsBIP30Repeat(*pindex);
     bool fEnforceBIP30 = true;
 
@@ -2448,7 +2458,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     // will actually prevent ever creating any duplicate coinbases in the
     // future.
     // Dpowcoin Params
-    // remove BIP30 exepctions - we dont have that blocks sow we skip bip30 tx's
+    // remove BIP30 exceptions - we don't have those blocks so we skip BIP30 tx's
     //static constexpr int BIP34_IMPLIES_BIP30_LIMIT = 1983702;
 
     // There is no potential to create a duplicate coinbase at block 209,921
@@ -2487,7 +2497,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     // consensus change that ensures coinbases at those heights cannot
     // duplicate earlier coinbases.
     // Dpowcoin Params
-    // remove BIP30 exepctions - we dont have that blocks sow we skip bip30 tx's
+    // remove BIP30 exceptions - we don't have those blocks so we skip BIP30 tx's
     /*
     if (fEnforceBIP30 || pindex->nHeight >= BIP34_IMPLIES_BIP30_LIMIT) {
     */
@@ -3223,8 +3233,13 @@ CBlockIndex* Chainstate::FindMostWorkChain()
                         // If we're missing data, then add back to m_blocks_unlinked,
                         // so that if the block arrives in the future we can try adding
                         // to setBlockIndexCandidates again.
-                        m_blockman.m_blocks_unlinked.insert(
-                            std::make_pair(pindexFailed->pprev, pindexFailed));
+                        // BACKPORT (upstream #35070; not yet in 31.x as of 2026-07-04): dedup via
+                        // AddUnlinkedBlock instead of raw insert. Avoids duplicate entries in
+                        // m_blocks_unlinked, which if the same entry is processed twice in
+                        // ReceivedBlockTransactions() could be re-added to setBlockIndexCandidates
+                        // with a modified nSequenceId, breaking ordering guarantees and leading to
+                        // undefined behavior. DO NOT DROP ON NEXT UPSTREAM MERGE/REBASE.
+                        m_blockman.AddUnlinkedBlock(pindexFailed);
                     }
                     setBlockIndexCandidates.erase(pindexFailed);
                     pindexFailed = pindexFailed->pprev;
@@ -3891,27 +3906,29 @@ void ChainstateManager::ReceivedBlockTransactions(const CBlock& block, CBlockInd
         }
     } else {
         if (pindexNew->pprev && pindexNew->pprev->IsValid(BLOCK_VALID_TREE)) {
-            m_blockman.m_blocks_unlinked.insert(std::make_pair(pindexNew->pprev, pindexNew));
+            // BACKPORT (upstream #35070; not yet in 31.x as of 2026-07-04): dedup via AddUnlinkedBlock
+            // instead of raw insert. DO NOT DROP ON NEXT UPSTREAM MERGE/REBASE.
+            m_blockman.AddUnlinkedBlock(pindexNew);
         }
     }
 }
 
-// [Dpowcoin] CheckProofOfWorkCached() -- the HeaderPoWCache-backed choke
+// Dpowcoin Params
+// CheckProofOfWorkCached() -- the HeaderPoWCache-backed choke
 // point used below by CheckBlockHeader(), CHeaderPoWCheck::operator(), and
-// HasValidProofOfWork()'s small-batch path -- now lives in pow.h/pow.cpp
-// (declared next to the plain CheckProofOfWork()), not here. It needs to be
-// a shared primitive: node/blockstorage.cpp's ReadBlock() also calls it on
-// every disk read, and it was previously unreachable from there because it
-// sat in this file's anonymous namespace (internal linkage), not because of
-// any real circular-dependency: blockstorage.cpp already includes both
-// pow.h and validation.h. See pow.cpp for the class and the full safety
-// argument (positive-only, keyed on GetHash(), miss-safe fallback).
+// HasValidProofOfWork()'s small-batch path -- lives in pow_cache.h/.cpp,
+// a standalone module with no knowledge of CBlockHeader beyond a forward
+// declaration; it depends on pow.h (for the plain CheckProofOfWork()), not
+// the other way around. It's a shared primitive: node/blockstorage.cpp's
+// ReadBlock() also calls it on every disk read. See pow_cache.h for the
+// full safety argument (positive-only, keyed on GetHash(), miss-safe
+// fallback) and pow_cache.cpp for the HeaderPoWCache class + singleton.
 
 /* Dpowcoin Params */
 static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)
 {
     // Check proof of work matches claimed amount.
-    // [Dpowcoin] Cached via CheckProofOfWorkCached() -- see its doc above.
+    // [Bitweb] Cached via CheckProofOfWorkCached() -- see its doc above.
     if (fCheckPOW && !CheckProofOfWorkCached(block, consensusParams)) {
         return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
     }
@@ -4105,85 +4122,42 @@ void ChainstateManager::GenerateCoinbaseCommitment(CBlock& block, const CBlockIn
 }
 
 /* Dpowcoin Params */
-namespace {
-/**
- * Argon2id proof-of-work check for a single header, run through
- * CCheckQueue so a batch of headers can be verified across several worker
- * threads at once. Each header's PoW is independent of every other header
- * in the batch -- only the hash computation itself is parallelized here;
- * link continuity and chainwork accounting still happen afterwards,
- * sequentially, in the original order, exactly as before.
- *
- * [Dpowcoin] Verification goes through CheckProofOfWorkCached() (declared
- * earlier in this file, just above CheckBlockHeader()), which makes the
- * cache bidirectional across header-sync phases: a header verified during
- * PRESYNC's anti-DoS pass is already cached when the same header (same
- * hash, same content) is re-sent from scratch for REDOWNLOAD, so
- * REDOWNLOAD hits the cache instead of recomputing Argon2id. The
- * sequential re-checks in CheckBlockHeader() benefit the same way.
- */
-class CHeaderPoWCheck
+std::optional<bool> CHeaderPoWCheck::operator()() const
 {
-private:
-    const CBlockHeader* m_header;
-    const Consensus::Params* m_params;
-
-public:
-    CHeaderPoWCheck(const CBlockHeader& header, const Consensus::Params& params)
-        : m_header(&header), m_params(&params) {}
-
-    std::optional<bool> operator()() const
-    {
-        // value is unused on failure; presence alone signals failure.
-        if (!CheckProofOfWorkCached(*m_header, *m_params)) {
-            return false;
-        }
-        return std::nullopt;
+    // value is unused on failure; presence alone signals failure.
+    if (!CheckProofOfWorkCached(*m_header, *m_params)) {
+        return false;
     }
-};
+    return std::nullopt;
+}
 
-//! Worker threads dedicated to verifying header PoW in parallel. Kept
-//! small and independent of hardware_concurrency(): Argon2id is
-//! memory-hard, so gains past a handful of threads are eaten by memory
-//! bandwidth contention, and this queue competes for CPU with
-//! m_script_check_queue and the rest of the node.
-constexpr unsigned int MAX_HEADER_POW_CHECK_THREADS{4};
-
-//! Below this many headers, queue dispatch overhead isn't worth it.
-constexpr size_t HEADER_POW_PARALLEL_THRESHOLD{8};
-
-CCheckQueue<CHeaderPoWCheck>& GetHeaderPoWCheckQueue()
+//! Number of worker threads to hand CCheckQueue<CHeaderPoWCheck> at
+//! construction time. total_participants is how many threads -- including
+//! the calling (master) thread itself, which always helps out via
+//! CCheckQueueControl::Complete(), same convention as -par's
+//! worker_threads_num -- will be hashing concurrently for one batch. One
+//! core is left free for the rest of the node whenever more than one core
+//! is available, so this never starves the system on small boxes (e.g. a
+//! Raspberry Pi).
+static int HeaderPoWCheckQueueWorkerThreads()
 {
-    // Constructed once, lazily, on first use, and lives for the rest of
-    // the process. Initialization of function-local statics is
-    // thread-safe since C++11, so no extra locking is needed here.
-    //
-    // total_participants is how many threads -- including the calling
-    // (master) thread itself, which always helps out via
-    // CCheckQueueControl::Complete(), same convention as -par's
-    // worker_threads_num -- will be hashing concurrently for one batch.
-    // One core is left free for the rest of the node whenever more than
-    // one core is available, so this never starves the system on small
-    // boxes (e.g. a Raspberry Pi).
     const int cores{static_cast<int>(std::thread::hardware_concurrency())};
     const int total_participants{std::clamp(cores > 1 ? cores - 1 : cores, 1, static_cast<int>(MAX_HEADER_POW_CHECK_THREADS))};
-    static CCheckQueue<CHeaderPoWCheck> queue{/*batch_size=*/64, total_participants - 1};
-    return queue;
+    return total_participants - 1;
 }
-} // namespace
 
-bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams)
+bool HasValidProofOfWork(std::span<const CBlockHeader> headers, const Consensus::Params& consensusParams, CCheckQueue<CHeaderPoWCheck>& queue)
 {
-    // [Dpowcoin] Below the parallel-dispatch threshold, checked sequentially
-    // through the same CheckProofOfWorkCached() choke point CHeaderPoWCheck
-    // uses -- so this path stays behaviorally identical to the queued one.
+    // Below the parallel-dispatch threshold, checked sequentially through
+    // the same CheckProofOfWorkCached() choke point CHeaderPoWCheck uses --
+    // so this path stays behaviorally identical to the queued one.
     if (headers.size() < HEADER_POW_PARALLEL_THRESHOLD) {
         return std::ranges::all_of(headers, [&](const auto& header) {
             return CheckProofOfWorkCached(header, consensusParams);
         });
     }
 
-    CCheckQueueControl<CHeaderPoWCheck> control(GetHeaderPoWCheckQueue());
+    CCheckQueueControl<CHeaderPoWCheck> control(queue);
     std::vector<CHeaderPoWCheck> checks;
     checks.reserve(headers.size());
     for (const auto& header : headers) {
@@ -5530,15 +5504,18 @@ void ChainstateManager::CheckBlockIndex() const
             }
         }
         // Check whether this block is in m_blocks_unlinked.
+        // BACKPORT (upstream #35070; not yet in 31.x as of 2026-07-04): keep scanning the full
+        // range (instead of an early `break`) so a duplicate entry is actually caught here in
+        // debug/-checkblockindex builds rather than silently masked by the old-first-hit logic.
+        // DO NOT DROP ON NEXT UPSTREAM MERGE/REBASE.
         auto rangeUnlinked{m_blockman.m_blocks_unlinked.equal_range(pindex->pprev)};
         bool foundInUnlinked = false;
-        while (rangeUnlinked.first != rangeUnlinked.second) {
-            assert(rangeUnlinked.first->first == pindex->pprev);
-            if (rangeUnlinked.first->second == pindex) {
+        for (auto it = rangeUnlinked.first; it != rangeUnlinked.second; ++it) {
+            assert(it->first == pindex->pprev);
+            if (it->second == pindex) {
+                assert(!foundInUnlinked); // No duplicates in m_blocks_unlinked
                 foundInUnlinked = true;
-                break;
             }
-            rangeUnlinked.first++;
         }
         if (pindex->pprev && (pindex->nStatus & BLOCK_HAVE_DATA) && pindexFirstNeverProcessed != nullptr && pindexFirstInvalid == nullptr) {
             // If this block has block data available, some parent was never received, and has no invalid parents, it must be in m_blocks_unlinked.
@@ -6306,6 +6283,7 @@ static ChainstateManager::Options&& Flatten(ChainstateManager::Options&& opts)
 
 ChainstateManager::ChainstateManager(const util::SignalInterrupt& interrupt, Options options, node::BlockManager::Options blockman_options)
     : m_script_check_queue{/*batch_size=*/128, std::clamp(options.worker_threads_num, 0, MAX_SCRIPTCHECK_THREADS)},
+      m_header_pow_check_queue{/*batch_size=*/64, HeaderPoWCheckQueueWorkerThreads()}, // Dpowcoin Params
       m_interrupt{interrupt},
       m_options{Flatten(std::move(options))},
       m_blockman{interrupt, std::move(blockman_options)},
@@ -6359,7 +6337,7 @@ Chainstate& ChainstateManager::AddChainstate(std::unique_ptr<Chainstate> chainst
 }
 
 // Dpowcoin Params
-// remove BIP30 exepctions - we dont have that blocks sow we skip bip30 tx's
+// remove BIP30 exceptions - we don't have those blocks so we skip BIP30 tx's
 /*
 bool IsBIP30Repeat(const CBlockIndex& block_index)
 {

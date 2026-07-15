@@ -49,6 +49,7 @@ add_executable(test_dpowcoin
   fs_tests.cpp
   getarg_tests.cpp
   hash_tests.cpp
+  header_pow_queue_tests.cpp # Dpowcoin Params
   headers_sync_chainwork_tests.cpp
   httpserver_tests.cpp
   i2p_tests.cpp
@@ -80,6 +81,7 @@ add_executable(test_dpowcoin
   pool_tests.cpp
   pow_tests.cpp
   pow_argon2id_tests.cpp # Dpowcoin Params
+  pow_cache_tests.cpp # Dpowcoin Params
   prevector_tests.cpp
   private_broadcast_tests.cpp
   raii_event_tests.cpp

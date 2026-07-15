@@ -91,10 +91,12 @@ add_executable(fuzz
   policy_estimator_io.cpp
   poolresource.cpp
   pow.cpp
-  permitted_difficulty.cpp # Dpowcoin Params: fuzz permitted difficulty
   pow_argon2id.cpp # Dpowcoin Params: fuzz Argon2id PoW hash
+  pow_cache.cpp # Dpowcoin Params: fuzz HeaderPoWCache
+  pow_cache_check.cpp # Dpowcoin Params: fuzz CheckProofOfWorkCached
   prevector.cpp
   primitives_transaction.cpp
+  private_broadcast.cpp
   process_message.cpp
   process_messages.cpp
   protocol.cpp

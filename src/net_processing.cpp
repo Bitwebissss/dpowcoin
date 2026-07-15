@@ -1854,6 +1854,7 @@ PeerManagerInfo PeerManagerImpl::GetInfo() const
     return PeerManagerInfo{
         .median_outbound_time_offset = m_outbound_time_offsets.Median(),
         .ignores_incoming_txs = m_opts.ignore_incoming_txs,
+        .private_broadcast = m_opts.private_broadcast,
     };
 }
 
@@ -1868,7 +1869,8 @@ std::vector<CTransactionRef> PeerManagerImpl::AbortPrivateBroadcast(const uint25
     std::vector<CTransactionRef> removed_txs;
 
     size_t connections_cancelled{0};
-    for (const auto& [tx, _] : snapshot) {
+    for (const auto& tx_info : snapshot) {
+        const CTransactionRef& tx{tx_info.tx};
         if (tx->GetHash().ToUint256() != id && tx->GetWitnessHash().ToUint256() != id) continue;
         if (const auto peer_acks{m_tx_for_private_broadcast.Remove(tx)}) {
             removed_txs.push_back(tx);
@@ -1964,14 +1966,22 @@ util::Expected<void, std::string> PeerManagerImpl::FetchBlock(NodeId peer_id, co
 {
     if (m_chainman.m_blockman.LoadingBlocks()) return util::Unexpected{"Loading blocks ..."};
 
+    // BACKPORT (upstream bitcoin/bitcoin PR #35498, commit 359680b74d; not yet in 31.x as of 2026-07-04):
+    // The lock must be taken here before fetching Peer so another thread does
+    // not delete the CNodeState from under the current thread, causing an
+    // assertion failure in BlockRequested. This lock can be replaced with a
+    // net-specific lock when more of CNodeState is moved into Peer.
+    // DO NOT DROP ON NEXT UPSTREAM MERGE/REBASE: fixes a real, remotely
+    // triggerable assert-crash reachable via RPC (getblockfrompeer) racing
+    // against peer disconnect on the net thread.
+    LOCK(cs_main);
+
     // Ensure this peer exists and hasn't been disconnected
     PeerRef peer = GetPeerRef(peer_id);
     if (peer == nullptr) return util::Unexpected{"Peer does not exist"};
 
     // Ignore pre-segwit peers
     if (!CanServeWitnesses(*peer)) return util::Unexpected{"Pre-SegWit peer"};
-
-    LOCK(cs_main);
 
     // Forget about all prior requests
     RemoveBlockRequest(block_index.GetBlockHash(), std::nullopt);
@@ -2620,7 +2630,8 @@ void PeerManagerImpl::SendBlockTransactions(CNode& pfrom, Peer& peer, const CBlo
 bool PeerManagerImpl::CheckHeadersPoW(const std::vector<CBlockHeader>& headers, Peer& peer)
 {
     // Do these headers have proof-of-work matching what's claimed?
-    if (!HasValidProofOfWork(headers, m_chainparams.GetConsensus())) {
+    // Dpowcoin Params addet m_chainman.GetHeaderCheckQueue()
+    if (!HasValidProofOfWork(headers, m_chainparams.GetConsensus(), m_chainman.GetHeaderCheckQueue())) {
         Misbehaving(peer, "header with invalid proof of work");
         return false;
     }
@@ -3906,9 +3917,18 @@ void PeerManagerImpl::ProcessMessage(Peer& peer, CNode& pfrom, const std::string
     }
 
     if (msg_type == NetMsgType::SENDCMPCT) {
-        bool sendcmpct_hb{false};
+        // BACKPORT (upstream bitcoin/bitcoin PR #35550, commit 2d0dce0af5; not yet in 31.x
+        // as of 2026-07-04): DO NOT DROP ON NEXT UPSTREAM MERGE/REBASE.
+        uint8_t sendcmpct_hb{0};
         uint64_t sendcmpct_version{0};
         vRecv >> sendcmpct_hb >> sendcmpct_version;
+
+        // BIP152: the first integer is interpreted as a boolean and MUST have a
+        // value of either 1 or 0.
+        if (sendcmpct_hb > 1) {
+            Misbehaving(peer, "invalid sendcmpct announce field");
+            return;
+        }
 
         // Only support compact block relay with witnesses
         if (sendcmpct_version != CMPCTBLOCKS_VERSION) return;

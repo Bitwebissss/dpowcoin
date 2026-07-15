@@ -27,14 +27,14 @@ TAR = os.getenv('TAR', 'tar')
 GITHUB_REPO = "dpowcore-project/dpowcoin"
 
 SHA256_SUMS = {
-    "3f69ac3312118ba433db7d6e9ae3d3a98f12be3f0378d71eb512d24edd69ef8b": {"tag": "v0.30.2", "archive": "dpowcoin-0.30.2-aarch64-linux-gnu.tar.gz"},
-    "1ac7d58628d2a98ecf3eb2521c6d28a9fcbfba4a46132a67802daa316eaf9f02": {"tag": "v0.30.2", "archive": "dpowcoin-0.30.2-arm-linux-gnueabihf.tar.gz"},
-    "ee0ea0837186d6bd7fd8cfb0925236ca68c3365ab9b2dd0937f25918a6297e18": {"tag": "v0.30.2", "archive": "dpowcoin-0.30.2-arm64-apple-darwin.tar.gz"},
-    "497efe4b0a719108de365598e5eda3a62f903eaed176e92f8db94ae632c59e9a": {"tag": "v0.30.2", "archive": "dpowcoin-0.30.2-powerpc64-linux-gnu.tar.gz"},
-    "79589c1d72849bf094aeb976149df77f5a14db764e973f88a434eb13d98ed9bd": {"tag": "v0.30.2", "archive": "dpowcoin-0.30.2-riscv64-linux-gnu.tar.gz"},
-    "2c9f295df2981b6653c67b3808549de5777e28c0e47f54254c15355ead727ce7": {"tag": "v0.30.2", "archive": "dpowcoin-0.30.2-x86_64-apple-darwin.tar.gz"},
-    "2f6e7a4488fc81904fcc100d7b663855c3784e312ca19b91bde1f1e9dda80d1d": {"tag": "v0.30.2", "archive": "dpowcoin-0.30.2-x86_64-linux-gnu.tar.gz"},
-    "9702d89a407f699e2c177f2e3822910438ded5f3af7e6a553568718353b65072": {"tag": "v0.30.2", "archive": "dpowcoin-0.30.2-win64.zip"},
+    "7f1c73a43545850b45ed32be64bc742b81b143d6719aea03f8038ed1941475a3": {"tag": "v26.3.2", "archive": "dpowcoin-26.3.2-aarch64-linux-gnu.tar.gz"},
+    "7e41628d1d76d9b6f154146cd649ea106da73f614a8ee49383cfa66d8e4cda23": {"tag": "v26.3.2", "archive": "dpowcoin-26.3.2-arm-linux-gnueabihf.tar.gz"},
+    "9905db599182b1a501a8d0b87a32c2469f7136e33faf0fc74c4352d2ee4ee980": {"tag": "v26.3.2", "archive": "dpowcoin-26.3.2-arm64-apple-darwin.tar.gz"},
+    "8a2f06d069b144ac15d03f047379484171fbfacf9d41576523f1d3581f9c2ae8": {"tag": "v26.3.2", "archive": "dpowcoin-26.3.2-powerpc64-linux-gnu.tar.gz"},
+    "e56614ffde65c98a468a2bd307f0598028988400605fad0a3b41182553408f6e": {"tag": "v26.3.2", "archive": "dpowcoin-26.3.2-riscv64-linux-gnu.tar.gz"},
+    "5432f1a21be17b98421cef7a2e6471f80e4f9cd5032572d42612466442378526": {"tag": "v26.3.2", "archive": "dpowcoin-26.3.2-x86_64-apple-darwin.tar.gz"},
+    "98a000effaef1a4de27e935592413e9a81f6d4f6af95e6ed1dc6337643e5e534": {"tag": "v26.3.2", "archive": "dpowcoin-26.3.2-x86_64-linux-gnu.tar.gz"},
+    "a2ae6d0e96239fce17c80d46893eb1a2142250e82bbf3a7e0cbde1148e1e9169": {"tag": "v26.3.2", "archive": "dpowcoin-26.3.2-win64.zip"},
 }
 
 
