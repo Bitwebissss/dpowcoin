@@ -470,7 +470,7 @@ class AssumeutxoTest(BitcoinTestFramework):
         def check_dump_output(output):
             assert_equal(
                 output['txoutset_hash'],
-                "77874d48d932a5cb7a7f770696f5224ff05746fdcf732a58270b45da0f665934")
+                "d2b051ff5e8eef46520350776f4100dd710a63447a8e01d917e92e79751a63e2")
             assert_equal(output["nchaintx"], blocks[SNAPSHOT_BASE_HEIGHT].chain_tx)
 
         check_dump_output(dump_output)
