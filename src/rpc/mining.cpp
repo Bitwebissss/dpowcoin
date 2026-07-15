@@ -131,7 +131,7 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& 
 
     // TRANSITIONAL: Yespower required only in window [100000, 217000). Remove in next release.
     static const int YESPOWER_START_HEIGHT = 100000;
-    static const int YESPOWER_FORK_HEIGHT  = 218200;
+    static const int YESPOWER_FORK_HEIGHT  = 225000;
     const CBlockIndex* tip = chainman.ActiveChain().Tip();
     const int nMiningHeight = tip ? tip->nHeight + 1 : 0;
     const bool bYespowerRequired = nMiningHeight >= YESPOWER_START_HEIGHT && nMiningHeight < YESPOWER_FORK_HEIGHT;
