@@ -18,6 +18,7 @@ from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_equal,
     bpf_cflags,
+    sync_txindex,
 )
 from test_framework.wallet import MiniWallet
 
@@ -155,6 +156,12 @@ class UTXOCacheTracepointTest(BitcoinTestFramework):
 
     def run_test(self):
         self.wallet = MiniWallet(self.nodes[0])
+        # Under parallel test execution the background txindex sync thread can be
+        # starved of CPU (heavy argon2id mining in other jobs), so m_synced may
+        # still be false when test_add_spent() calls getrawtransaction() without a
+        # blockhash. That RPC path returns -5 immediately (no wait/retry loop) if
+        # the index isn't synced yet. Block here until it actually is.
+        sync_txindex(self, self.nodes[0])
 
         self.test_uncache()
         self.test_add_spent()
