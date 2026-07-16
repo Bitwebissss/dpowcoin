@@ -36,7 +36,7 @@ INVALID_DATA = [
         [],
     ),
     (
-        "DPC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KRMXgGZ",
+        "DPC1QR508D6QEJXTDG4Y5R3ZARVARYVA8PFQG",
         "Invalid Bech32 v0 address program size (16 bytes), per BIP141",
         [],
     ),
@@ -47,7 +47,7 @@ INVALID_DATA = [
     ),
     (
         "DPC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KRMXgGZ",
-        "Invalid character or mixed case",  # web1, Mixed case, not in BIP 173 test vectors
+        "Invalid character or mixed case",  # dpc1, Mixed case, not in BIP 173 test vectors
         [40],
     ),
     (
