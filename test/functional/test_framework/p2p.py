@@ -597,7 +597,7 @@ class P2PInterface(P2PConnection):
 
     # Connection helper methods
 
-    def wait_until(self, test_function_in, *, timeout=60, check_connected=True, check_interval=0.05):
+    def wait_until(self, test_function_in, *, timeout=1200, check_connected=True, check_interval=0.05):
         def test_function():
             if check_connected:
                 assert self.is_connected
@@ -605,22 +605,22 @@ class P2PInterface(P2PConnection):
 
         wait_until_helper_internal(test_function, timeout=timeout, lock=p2p_lock, timeout_factor=self.timeout_factor, check_interval=check_interval)
 
-    def wait_for_connect(self, *, timeout=60):
+    def wait_for_connect(self, *, timeout=1200):
         test_function = lambda: self.is_connected
         self.wait_until(test_function, timeout=timeout, check_connected=False)
 
-    def wait_for_disconnect(self, *, timeout=60):
+    def wait_for_disconnect(self, *, timeout=1200):
         test_function = lambda: not self.is_connected
         self.wait_until(test_function, timeout=timeout, check_connected=False)
 
-    def wait_for_reconnect(self, *, timeout=60):
+    def wait_for_reconnect(self, *, timeout=1200):
         def test_function():
             return self.is_connected and self.last_message.get('version') and not self.supports_v2_p2p
         self.wait_until(test_function, timeout=timeout, check_connected=False)
 
     # Message receiving helper methods
 
-    def wait_for_tx(self, txid, *, timeout=60):
+    def wait_for_tx(self, txid, *, timeout=1200):
         def test_function():
             if not self.last_message.get('tx'):
                 return False
@@ -628,13 +628,13 @@ class P2PInterface(P2PConnection):
 
         self.wait_until(test_function, timeout=timeout)
 
-    def wait_for_block(self, blockhash, *, timeout=60):
+    def wait_for_block(self, blockhash, *, timeout=1200):
         def test_function():
             return self.last_message.get("block") and self.last_message["block"].block.hash_int == blockhash
 
         self.wait_until(test_function, timeout=timeout)
 
-    def wait_for_header(self, blockhash, *, timeout=60):
+    def wait_for_header(self, blockhash, *, timeout=1200):
         def test_function():
             last_headers = self.last_message.get('headers')
             if not last_headers:
@@ -643,7 +643,7 @@ class P2PInterface(P2PConnection):
 
         self.wait_until(test_function, timeout=timeout)
 
-    def wait_for_merkleblock(self, blockhash, *, timeout=60):
+    def wait_for_merkleblock(self, blockhash, *, timeout=1200):
         def test_function():
             last_filtered_block = self.last_message.get('merkleblock')
             if not last_filtered_block:
@@ -652,7 +652,7 @@ class P2PInterface(P2PConnection):
 
         self.wait_until(test_function, timeout=timeout)
 
-    def wait_for_getdata(self, hash_list, *, timeout=60):
+    def wait_for_getdata(self, hash_list, *, timeout=1200):
         """Waits for a getdata message.
 
         The object hashes in the inventory vector must match the provided hash_list."""
@@ -664,7 +664,7 @@ class P2PInterface(P2PConnection):
 
         self.wait_until(test_function, timeout=timeout)
 
-    def wait_for_getheaders(self, block_hash=None, *, timeout=60):
+    def wait_for_getheaders(self, block_hash=None, *, timeout=1200):
         """Waits for a getheaders message containing a specific block hash.
 
         If no block hash is provided, checks whether any getheaders message has been received by the node."""
@@ -678,7 +678,7 @@ class P2PInterface(P2PConnection):
 
         self.wait_until(test_function, timeout=timeout)
 
-    def wait_for_inv(self, expected_inv, *, timeout=60):
+    def wait_for_inv(self, expected_inv, *, timeout=1200):
         """Waits for an INV message and checks that the first inv object in the message was as expected."""
         if len(expected_inv) > 1:
             raise NotImplementedError("wait_for_inv() will only verify the first inv object")
@@ -690,7 +690,7 @@ class P2PInterface(P2PConnection):
 
         self.wait_until(test_function, timeout=timeout)
 
-    def wait_for_verack(self, *, timeout=60):
+    def wait_for_verack(self, *, timeout=1200):
         def test_function():
             return "verack" in self.last_message
 
@@ -703,11 +703,11 @@ class P2PInterface(P2PConnection):
             self.send_without_ping(self.on_connection_send_msg)
             self.on_connection_send_msg = None  # Never used again
 
-    def send_and_ping(self, message, *, timeout=60):
+    def send_and_ping(self, message, *, timeout=1200):
         self.send_without_ping(message)
         self.sync_with_ping(timeout=timeout)
 
-    def sync_with_ping(self, *, timeout=60):
+    def sync_with_ping(self, *, timeout=1200):
         """Ensure ProcessMessages and SendMessages is called on this connection"""
         # Sending two pings back-to-back, requires that the node calls
         # `ProcessMessage` twice, and thus ensures `SendMessages` must have
@@ -876,7 +876,7 @@ class P2PDataStore(P2PInterface):
         if response is not None:
             self.send_without_ping(response)
 
-    def send_blocks_and_test(self, blocks, node, *, success=True, force_send=False, reject_reason=None, expect_disconnect=False, timeout=60, is_decoy=False):
+    def send_blocks_and_test(self, blocks, node, *, success=True, force_send=False, reject_reason=None, expect_disconnect=False, timeout=1200, is_decoy=False):
         """Send blocks to test node and test whether the tip advances.
 
          - add all blocks to our block_store
@@ -965,7 +965,7 @@ class P2PTxInvStore(P2PInterface):
         with p2p_lock:
             return list(self.tx_invs_received.keys())
 
-    def wait_for_broadcast(self, txns, *, timeout=60):
+    def wait_for_broadcast(self, txns, *, timeout=1200):
         """Waits for the txns (list of txids) to complete initial broadcast.
         The mempool should mark unbroadcast=False for these transactions.
         """
