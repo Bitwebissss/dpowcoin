@@ -342,23 +342,23 @@ class NetTest(BitcoinTestFramework):
         # Clear it to have a deterministic addrman.
         self.restart_node(1, ["-checkaddrman=1", "-test=addrman"], clear_addrman=True)
         node = self.nodes[1]
-        #Temporary code to find colliding address after change port.
+        # Temporary code to find colliding address after change port.
         #
-        #for third in range(256):
-        #    for fourth in range(256):
-        #        candidate = f"1.2.{third}.{fourth}"
-        #        if candidate == "1.2.3.4":
-        #            continue
-        #        self.nodes[1].addpeeraddress(address="1.2.3.4", tried=True, port=42003)
-        #        result = self.nodes[1].addpeeraddress(address=candidate, tried=True, port=42003)
-        #        self.restart_node(1, ["-checkaddrman=1", "-test=addrman"], clear_addrman=True)
-        #        node = self.nodes[1]
-        #        if result == {"success": False, "error": "failed-adding-to-tried"}:
-        #            self.log.info(f"COLLIDING ADDRESS FOR PORT 42003: {candidate}")
-        #            break
-        #    else:
-        #        continue
-        #    break
+        for third in range(256):
+            for fourth in range(256):
+                candidate = f"1.2.{third}.{fourth}"
+                if candidate == "1.2.3.4":
+                    continue
+                self.nodes[1].addpeeraddress(address="1.2.3.4", tried=True, port=42003)
+                result = self.nodes[1].addpeeraddress(address=candidate, tried=True, port=42003)
+                self.restart_node(1, ["-checkaddrman=1", "-test=addrman"], clear_addrman=True)
+                node = self.nodes[1]
+                if result == {"success": False, "error": "failed-adding-to-tried"}:
+                    self.log.info(f"COLLIDING ADDRESS FOR PORT 42003: {candidate}")
+                    break
+            else:
+                continue
+            break
 
         self.log.debug("Test that addpeeraddress is a hidden RPC")
         # It is hidden from general help, but its detailed help may be called directly.
