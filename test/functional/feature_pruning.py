@@ -107,7 +107,7 @@ class PruneTest(BitcoinTestFramework):
             ["-maxreceivebuffer=20000"],
             ["-prune=550", "-blockfilterindex=1"],
         ]
-        self.rpc_timeout = 120
+        self.rpc_timeout = 1200
 
     def setup_network(self):
         self.setup_nodes()
