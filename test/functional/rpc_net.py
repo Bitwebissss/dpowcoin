@@ -531,7 +531,7 @@ class NetTest(BitcoinTestFramework):
         expected = {
             "new": [
                     {
-                        "bucket_position": "82/42",
+                        "bucket_position": "82/8",
                         "address": "2.0.0.0",
                         "port": 42003,
                         "services": 9,
@@ -540,7 +540,7 @@ class NetTest(BitcoinTestFramework):
                         "source_network": "ipv4",
                     },
                     {
-                        "bucket_position": "336/44",
+                        "bucket_position": "336/14",
                         "address": "fc00:1:2:3:4:5:6:7",
                         "port": 42003,
                         "services": 9,
@@ -549,7 +549,7 @@ class NetTest(BitcoinTestFramework):
                         "source_network": "cjdns",
                     },
                     {
-                        "bucket_position": "963/11",
+                        "bucket_position": "963/48",
                         "address": "c4gfnttsuwqomiygupdqqqyy5y5emnk5c73hrfvatri67prd7vyq.b32.i2p",
                         "port": 42003,
                         "services": 9,
@@ -569,7 +569,7 @@ class NetTest(BitcoinTestFramework):
             ],
             "tried": [
                     {
-                        "bucket_position": "137/51",
+                        "bucket_position": "4/35",
                         "address": "1.2.3.4",
                         "port": 42003,
                         "services": 9,
@@ -578,7 +578,7 @@ class NetTest(BitcoinTestFramework):
                         "source_network": "ipv4",
                     },
                     {
-                        "bucket_position": "34/6",
+                        "bucket_position": "42/21",
                         "address": "1233:3432:2434:2343:3234:2345:6546:4534",
                         "port": 42003,
                         "services": 9,
@@ -587,7 +587,7 @@ class NetTest(BitcoinTestFramework):
                         "source_network": "ipv6",
                     },
                     {
-                        "bucket_position": "200/19",
+                        "bucket_position": "97/34",
                         "address": "pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion",
                         "port": 42003,
                         "services": 9,
