@@ -44,7 +44,7 @@ import socket
 import time
 import urllib.parse
 
-HTTP_TIMEOUT = 600
+HTTP_TIMEOUT = 1200
 USER_AGENT = "AuthServiceProxy/0.1"
 
 log = logging.getLogger("BitcoinRPC")
