@@ -49,7 +49,7 @@ def seed_addrman(node):
     # If the addrman positioning/bucketing is changed, these might collide
     # and adding them fails.
     success = { "success": True }
-    assert_equal(node.addpeeraddress(address="1.2.3.4", tried=True, port=42003), success)
+    assert_equal(node.addpeeraddress(address="1.2.1.90", tried=True, port=42003), success)
     assert_equal(node.addpeeraddress(address="2.0.0.0", port=42003), success)
     assert_equal(node.addpeeraddress(address="1233:3432:2434:2343:3234:2345:6546:4534", tried=True, port=42003), success)
     assert_equal(node.addpeeraddress(address="2803:0:1234:abcd::1", port=45324), success)
@@ -342,23 +342,23 @@ class NetTest(BitcoinTestFramework):
         # Clear it to have a deterministic addrman.
         self.restart_node(1, ["-checkaddrman=1", "-test=addrman"], clear_addrman=True)
         node = self.nodes[1]
-        # Temporary code to find colliding address after change port.
+        #Temporary code to find colliding address after change port.
         #
-        for third in range(256):
-            for fourth in range(256):
-                candidate = f"1.2.{third}.{fourth}"
-                if candidate == "1.2.3.4":
-                    continue
-                self.nodes[1].addpeeraddress(address="1.2.3.4", tried=True, port=42003)
-                result = self.nodes[1].addpeeraddress(address=candidate, tried=True, port=42003)
-                self.restart_node(1, ["-checkaddrman=1", "-test=addrman"], clear_addrman=True)
-                node = self.nodes[1]
-                if result == {"success": False, "error": "failed-adding-to-tried"}:
-                    self.log.info(f"COLLIDING ADDRESS FOR PORT 42003: {candidate}")
-                    break
-            else:
-                continue
-            break
+        #for third in range(256):
+        #    for fourth in range(256):
+        #        candidate = f"1.2.{third}.{fourth}"
+        #        if candidate == "1.2.3.4":
+        #            continue
+        #        self.nodes[1].addpeeraddress(address="1.2.3.4", tried=True, port=42003)
+        #        result = self.nodes[1].addpeeraddress(address=candidate, tried=True, port=42003)
+        #        self.restart_node(1, ["-checkaddrman=1", "-test=addrman"], clear_addrman=True)
+        #        node = self.nodes[1]
+        #        if result == {"success": False, "error": "failed-adding-to-tried"}:
+        #            self.log.info(f"COLLIDING ADDRESS FOR PORT 42003: {candidate}")
+        #            break
+        #    else:
+        #        continue
+        #    break
 
         self.log.debug("Test that addpeeraddress is a hidden RPC")
         # It is hidden from general help, but its detailed help may be called directly.
@@ -373,11 +373,11 @@ class NetTest(BitcoinTestFramework):
         assert_raises_rpc_error(-30, "Invalid IP address", node.addpeeraddress, address="not_an_ip", port=42003)
 
         self.log.debug("Test that non-bool tried fails")
-        assert_raises_rpc_error(-3, "JSON value of type string is not of expected type bool", self.nodes[0].addpeeraddress, address="1.2.3.4", tried="True", port=1234)
+        assert_raises_rpc_error(-3, "JSON value of type string is not of expected type bool", self.nodes[0].addpeeraddress, address="1.2.1.90", tried="True", port=1234)
 
         self.log.debug("Test that adding an address with invalid port fails")
-        assert_raises_rpc_error(-1, "JSON integer out of range", self.nodes[0].addpeeraddress, address="1.2.3.4", port=-1)
-        assert_raises_rpc_error(-1, "JSON integer out of range", self.nodes[0].addpeeraddress, address="1.2.3.4", port=65536)
+        assert_raises_rpc_error(-1, "JSON integer out of range", self.nodes[0].addpeeraddress, address="1.2.1.90", port=-1)
+        assert_raises_rpc_error(-1, "JSON integer out of range", self.nodes[0].addpeeraddress, address="1.2.1.90", port=65536)
 
         self.log.debug("Test that adding a valid address to the new table succeeds")
         assert_equal(node.addpeeraddress(address="1.0.0.0", tried=False, port=42003), {"success": True})
@@ -394,18 +394,18 @@ class NetTest(BitcoinTestFramework):
         assert_equal(len(node.getnodeaddresses(count=0)), 1)
 
         self.log.debug("Test that adding a valid address to the tried table succeeds")
-        assert_equal(node.addpeeraddress(address="1.2.3.4", tried=True, port=42003), {"success": True})
+        assert_equal(node.addpeeraddress(address="1.2.1.90", tried=True, port=42003), {"success": True})
         addrman = node.getrawaddrman()
         assert_equal(len(addrman["new"]), 1)
         tried_table = list(addrman["tried"].values())
         assert_equal(len(tried_table), 1)
-        assert_equal(tried_table[0]["address"], "1.2.3.4")
+        assert_equal(tried_table[0]["address"], "1.2.1.90")
         assert_equal(tried_table[0]["port"], 42003)
         node.getnodeaddresses(count=0)  # getnodeaddresses re-runs the addrman checks
 
         self.log.debug("Test that adding an already-present tried address to the new and tried tables fails")
         for value in [True, False]:
-            assert_equal(node.addpeeraddress(address="1.2.3.4", tried=value, port=42003), {"success": False, "error": "failed-adding-to-new"})
+            assert_equal(node.addpeeraddress(address="1.2.1.90", tried=value, port=42003), {"success": False, "error": "failed-adding-to-new"})
         assert_equal(len(node.getnodeaddresses(count=0)), 2)
 
         self.log.debug("Test that adding an address, which collides with the address in tried table, fails")
@@ -570,11 +570,11 @@ class NetTest(BitcoinTestFramework):
             "tried": [
                     {
                         "bucket_position": "137/51",
-                        "address": "1.2.3.4",
+                        "address": "1.2.1.90",
                         "port": 42003,
                         "services": 9,
                         "network": "ipv4",
-                        "source": "1.2.3.4",
+                        "source": "1.2.1.90",
                         "source_network": "ipv4",
                     },
                     {
