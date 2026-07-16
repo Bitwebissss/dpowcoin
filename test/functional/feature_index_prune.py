@@ -175,7 +175,7 @@ class FeatureIndexPruneTest(BitcoinTestFramework):
             send_batch_request(node, "getblockfrompeer", [[bh, peer_id] for bh in hashes])
             # Ensure all necessary blocks have been fetched before proceeding
             for bh in hashes:
-                self.wait_until(lambda: self.check_for_block(i, bh), timeout=600)
+                self.wait_until(lambda: self.check_for_block(i, bh), timeout=10)
 
             # Upon restart we expect the same errors as previously although all
             # necessary blocks have been fetched. Both indices need the undo
