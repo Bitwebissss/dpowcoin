@@ -493,10 +493,10 @@ class NetTest(BitcoinTestFramework):
         seed_addrman(node)
 
         # Temporary print real bucket positions
-        raw = node.getrawaddrman()
-        for table_name in ["new", "tried"]:
-            for bp, entry in raw[table_name].items():
-                self.log.info(f"TABLE={table_name} addr={entry['address']} bucket_position={bp}")
+        #raw = node.getrawaddrman()
+        #for table_name in ["new", "tried"]:
+        #    for bp, entry in raw[table_name].items():
+        #        self.log.info(f"TABLE={table_name} addr={entry['address']} bucket_position={bp}")
 
         self.log.debug("Test that getrawaddrman is a hidden RPC")
         # It is hidden from general help, but its detailed help may be called directly.
