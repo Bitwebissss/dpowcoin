@@ -180,11 +180,11 @@ You can also manually configure your node to be reachable from the Tor network.
 Add these lines to your `/etc/tor/torrc` (or equivalent config file):
 
     HiddenServiceDir /var/lib/tor/dpowcoin-service/
-    HiddenServicePort 42003 127.0.0.1:42034
+    HiddenServicePort 42003 127.0.0.1:42004
 
 The directory can be different of course, but virtual port numbers should be equal to
 your dpowcoind's P2P listen port (42003 by default), and target addresses and ports
-should be equal to binding address and port for inbound Tor connections (127.0.0.1:42034 by default).
+should be equal to binding address and port for inbound Tor connections (127.0.0.1:42004 by default).
 
     -externalip=X   You can tell dpowcoin about its publicly reachable addresses using
                     this option, and this can be an onion address. Given the above
@@ -217,7 +217,7 @@ In a typical situation, where you're only reachable via Tor, this should suffice
 listen on all devices and another node could establish a clearnet connection, when knowing
 your address. To mitigate this, additionally bind the address of your Tor proxy:
 
-    dpowcoind ... -bind=127.0.0.1:42034=onion
+    dpowcoind ... -bind=127.0.0.1:42004=onion
 
 If you don't care too much about hiding your node, and want to be reachable on IPv4
 as well, use `discover` instead:

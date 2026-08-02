@@ -34,7 +34,7 @@ const CBaseChainParams& BaseParams()
 }
 
 /**
- * Port numbers for incoming Tor connections (42034, 18334, 38334, 48334, 18445) have
+ * Port numbers for incoming Tor connections (42004, 18334, 38334, 48334, 18445) have
  * been chosen arbitrarily to keep ranges of used ports tight.
  */
 std::unique_ptr<CBaseChainParams> CreateBaseChainParams(const ChainType chain)
