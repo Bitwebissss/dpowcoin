@@ -254,6 +254,7 @@ BASE_SCRIPTS = [
     'wallet_resendwallettransactions.py',
     'wallet_fallbackfee.py',
     'p2p_private_broadcast.py',
+    'p2p_private_broadcast_cap.py',
     'wallet_musig.py',
     'mempool_64byte_reject.py',
     'rpc_getchaintips.py',
