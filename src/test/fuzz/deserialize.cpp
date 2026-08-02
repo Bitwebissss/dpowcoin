@@ -95,12 +95,12 @@ T Deserialize(DataStream ds)
 template <typename T, typename P>
 void AssertEqualAfterSerializeDeserialize(const T& obj, const P& params)
 {
-    assert(Deserialize<T>(Serialize(obj, params), params) == obj);
+    assert(Deserialize<T>(Serialize(params(obj)), params) == obj);
 }
 template <typename T>
 void AssertEqualAfterSerializeDeserialize(const T& obj)
 {
-    assert(Deserialize<T>(Serialize(params(obj)), params) == obj);
+    assert(Deserialize<T>(Serialize(obj)) == obj);
 }
 
 } // namespace
