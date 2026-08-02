@@ -100,7 +100,7 @@ void AssertEqualAfterSerializeDeserialize(const T& obj, const P& params)
 template <typename T>
 void AssertEqualAfterSerializeDeserialize(const T& obj)
 {
-       assert(Deserialize<T>(Serialize(params(obj)), params) == obj);
+    assert(Deserialize<T>(Serialize(params(obj)), params) == obj);
 }
 
 } // namespace
