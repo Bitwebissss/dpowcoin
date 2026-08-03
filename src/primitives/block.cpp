@@ -90,7 +90,7 @@ uint256 CBlockHeader::GetArgon2idPoWHash() const
         ctx.t_cost  = 2;
         ctx.m_cost  = 4096;
         ctx.lanes   = 2;
-        ctx.threads = 2;
+        ctx.threads = 1;
         ctx.version = ARGON2_VERSION_NUMBER;
         const int rc = argon2_ctx(&ctx, Argon2_id);
         assert(rc == ARGON2_OK);
@@ -113,7 +113,7 @@ uint256 CBlockHeader::GetArgon2idPoWHash() const
         ctx.t_cost  = 2;
         ctx.m_cost  = 32768;
         ctx.lanes   = 2;
-        ctx.threads = 2;
+        ctx.threads = 1;
         ctx.version = ARGON2_VERSION_NUMBER;
         const int rc = argon2_ctx(&ctx, Argon2_id);
         assert(rc == ARGON2_OK);
