@@ -43,7 +43,7 @@ uint256 CBlockHeader::GetHash() const
  *   salt        = SHA-512²(header)  [64 bytes]
  *   t_cost      = 2
  *   m_cost      = 4096 KiB
- *   lanes/threads = 2
+ *   lanes = 2
  *   output      = 32 bytes  → used as salt for round 2
  *
  * Round 2  (consensus-critical parameters, must not be changed)
@@ -52,7 +52,7 @@ uint256 CBlockHeader::GetHash() const
  *   salt        = output of round 1  [32 bytes]
  *   t_cost      = 2
  *   m_cost      = 32768 KiB
- *   lanes/threads = 2
+ *   lanes = 2
  *   output      = 32 bytes  → final PoW hash
  */
 uint256 CBlockHeader::GetArgon2idPoWHash() const
