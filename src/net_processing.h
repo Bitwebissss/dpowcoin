@@ -153,7 +153,7 @@ public:
      * Initiate a private transaction broadcast. This is done
      * asynchronously via short-lived connections to peers on privacy networks.
      * @retval node::TransactionError::OK The transaction is scheduled for private broadcast (or was already scheduled).
-     * @retval node::TransactionError::PRIVATE_BROADCAST_FULL Rejected because the private broadcast queue is full
+     * @retval node::TransactionError::PRIVATE_BROADCAST_FULL Rejected because the private broadcast queue is full.
      */
     [[nodiscard]] virtual node::TransactionError InitiateTxBroadcastPrivate(const CTransactionRef& tx) = 0;
 

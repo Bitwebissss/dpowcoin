@@ -40,11 +40,11 @@ uint256 CBlockHeader::GetHash() const
  * Round 1  (consensus-critical parameters, must not be changed)
  * -------
  *   password    = serialized 80-byte block header
- *   salt        = SHA-512²(header)  [64 bytes]
+ *   salt        = SHA-512 x2 (header)  [64 bytes]
  *   t_cost      = 2
  *   m_cost      = 4096 KiB
  *   lanes = 2
- *   output      = 32 bytes  → used as salt for round 2
+ *   output      = 32 bytes  > used as salt for round 2
  *
  * Round 2  (consensus-critical parameters, must not be changed)
  * -------
@@ -53,7 +53,7 @@ uint256 CBlockHeader::GetHash() const
  *   t_cost      = 2
  *   m_cost      = 32768 KiB
  *   lanes = 2
- *   output      = 32 bytes  → final PoW hash
+ *   output      = 32 bytes  > final PoW hash
  */
 uint256 CBlockHeader::GetArgon2idPoWHash() const
 {
@@ -73,7 +73,7 @@ uint256 CBlockHeader::GetArgon2idPoWHash() const
     uint8_t* const pwd    = const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(ss.data()));
     const uint32_t pwdlen = static_cast<uint32_t>(ss.size());  // 80
 
-    // Round 1: t=2, m=4096 KiB, lanes=2; salt = SHA-512²(header).
+    // Round 1: t=2, m=4096 KiB, lanes=2; salt = SHA-512 x2 (header).
     {
         argon2_context ctx;
         ctx.out     = hash.begin();
