@@ -31,3 +31,8 @@ export BITCOIN_CONFIG="\
  -DAPPEND_CPPFLAGS='-U_FORTIFY_SOURCE' \
 "
 export USE_INSTRUMENTED_LIBCPP="MemoryWithOrigins"
+# Skip the heaviest functional tests: on this build mining/validation uses a
+# real, memory-hard Argon2id PoW hash instead of cheap SHA256d, so these
+# tests (which mine many blocks) blow past the CI timeout under MSan
+# instrumentation. See BASE_SCRIPTS tiers in test/functional/test_runner.py.
+export TEST_RUNNER_EXTRA="--exclude p2p_headers_sync_with_minchainwork --exclude feature_taproot --exclude feature_assumevalid --exclude feature_block"

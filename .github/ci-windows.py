@@ -201,6 +201,11 @@ def run_tests(ci_type):
 
     elif ci_type == "fuzz":
         os.environ["BITCOINFUZZ"] = str(release_bin / "fuzz.exe")
+        # Skip the fuzz targets that perform real, memory-hard Argon2id PoW
+        # hashing (p2p_headers_presync loop-mines a header; pow_argon2id and
+        # pow_cache_check call GetArgon2idPoWHash() directly) -- these are
+        # far slower per-iteration than the rest of the corpus and cause
+        # this job to time out.
         fuzz_cmd = [
             sys.executable,
             str(build_dir / "test" / "fuzz" / "test_runner.py"),
@@ -208,6 +213,8 @@ def run_tests(ci_type):
             num_procs,
             "--loglevel",
             "DEBUG",
+            "--exclude",
+            "p2p_headers_presync,pow_argon2id,pow_cache_check",
             str(workspace / "qa-assets" / "fuzz_corpora"),
         ]
         run(fuzz_cmd)

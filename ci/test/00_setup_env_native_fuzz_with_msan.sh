@@ -32,3 +32,9 @@ export USE_INSTRUMENTED_LIBCPP="MemoryWithOrigins"
 export RUN_UNIT_TESTS="false"
 export RUN_FUNCTIONAL_TESTS="false"
 export RUN_FUZZ_TESTS=true
+# Skip the fuzz targets that perform real, memory-hard Argon2id PoW hashing
+# (p2p_headers_presync loop-mines a header; pow_argon2id and pow_cache_check
+# call GetArgon2idPoWHash() directly) -- these are far slower per-iteration
+# than the rest of the corpus and cause this job to time out under MSan,
+# which is already the slowest sanitizer.
+export FUZZ_TESTS_CONFIG="--exclude p2p_headers_presync,pow_argon2id,pow_cache_check"
