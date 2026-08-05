@@ -28,4 +28,4 @@ export BITCOIN_CONFIG="\
 # (p2p_headers_presync loop-mines a header; pow_argon2id and pow_cache_check
 # call GetArgon2idPoWHash() directly) -- these are far slower per-iteration
 # than the rest of the corpus and cause this job to time out under ASan/UBSan.
-export FUZZ_TESTS_CONFIG="--exclude p2p_headers_presync,pow_argon2id,pow_cache_check"
+export FUZZ_TESTS_CONFIG="--exclude p2p_headers_presync"

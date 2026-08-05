@@ -37,4 +37,4 @@ export RUN_FUZZ_TESTS=true
 # call GetArgon2idPoWHash() directly) -- these are far slower per-iteration
 # than the rest of the corpus and cause this job to time out under MSan,
 # which is already the slowest sanitizer.
-export FUZZ_TESTS_CONFIG="--exclude p2p_headers_presync,pow_argon2id,pow_cache_check"
+export FUZZ_TESTS_CONFIG="--exclude p2p_headers_presync"
