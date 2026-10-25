@@ -492,7 +492,7 @@ class ProxyTest(BitcoinTestFramework):
             expected_msgs=["trying v1 connection (manual) to example.invalid:42003"],
             unexpected_msgs=["SOCKS5 connecting example.invalid"],
         ):
-            self.nodes[1].addnode("example.invalid:8333", "onetry", v2transport=False)
+            self.nodes[1].addnode("example.invalid:42003", "onetry", v2transport=False)
         self.stop_node(1)
 
         self.log.info("Test passing too-long unix path to -proxy raises init error")
