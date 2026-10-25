@@ -93,9 +93,7 @@ public:
      * Pick the transaction with the fewest send attempts, and confirmations,
      * and oldest send/confirm times.
      * @param[in] will_send_to_nodeid Will remember that the returned transaction
-     * was picked for sending to this node. Calling this method more than once with
-     * the same `will_send_to_nodeid` is not allowed because sending more than one
-     * transaction to one node would be a privacy leak.
+     * was picked for sending to this node.
      * @param[in] will_send_to_address Address of the peer to which this transaction
      * will be sent.
      * @return Most urgent transaction or nullopt if there are no transactions.
@@ -208,7 +206,6 @@ private:
      */
     std::optional<TxAndSendStatusForNode> GetSendStatusByNode(const NodeId& nodeid)
         EXCLUSIVE_LOCKS_REQUIRED(m_mutex);
-
     struct TxSendStatus {
         const NodeClock::time_point time_added{NodeClock::now()};
         std::vector<SendStatus> send_statuses;
