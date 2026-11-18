@@ -115,7 +115,7 @@ BOOST_AUTO_TEST_CASE(basic)
         BOOST_CHECK(peers[0].received.has_value());
     }
     {
-        const auto& peers{find_tx_info(infos, tx_for_recipient1).peers};
+        const auto& peers{find_tx_info(infos, tx_for_recipient2).peers};
         BOOST_CHECK_EQUAL(peers.size(), 1);
         BOOST_CHECK_EQUAL(peers[0].address.ToStringAddrPort(), addr2.ToStringAddrPort());
         BOOST_CHECK(!peers[0].received.has_value());
